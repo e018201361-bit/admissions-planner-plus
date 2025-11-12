@@ -89,12 +89,14 @@ def init_db():
     )""")
     conn.commit()
     # seeds
-   c.execute("SELECT COUNT(*) FROM hospitals")
-if c.fetchone()[0] == 0:
-    for name in ("Hospital 1", "Hospital 2", "Hospital 3"):
-        c.execute("INSERT INTO hospitals(name) VALUES (?)", (name,))
-conn.commit()
-conn.close()
+       # seeds
+    c.execute("SELECT COUNT(*) FROM hospitals")
+    if c.fetchone()[0] == 0:
+        for name in ("Hospital 1", "Hospital 2", "Hospital 3"):
+            c.execute("INSERT INTO hospitals(name) VALUES (?)", (name,))
+    conn.commit()
+    conn.close()
+
 
 
 def fetch_df(q: str, params=()):
