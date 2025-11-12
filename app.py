@@ -89,10 +89,12 @@ def init_db():
     )""")
     conn.commit()
     # seeds
+   c.execute("SELECT COUNT(*) FROM hospitals")
+if c.fetchone()[0] == 0:
     for name in ("Hospital 1", "Hospital 2", "Hospital 3"):
-        c.execute("INSERT OR IGNORE INTO hospitals(name) VALUES (?)", (name,))
-    conn.commit()
-    conn.close()
+        c.execute("INSERT INTO hospitals(name) VALUES (?)", (name,))
+conn.commit()
+conn.close()
 
 
 def fetch_df(q: str, params=()):
@@ -311,6 +313,7 @@ with tab_settings:
                         execute("DELETE FROM wards WHERE hospital_id=?", (int(r['id']),))
                         execute("DELETE FROM hospitals WHERE id=?", (int(r['id']),))
                         st.success("ลบโรงพยาบาลเรียบร้อย — กด R เพื่อรีเฟรชหน้า")
+                        st.rerun()
         st.divider()
     else:
         st.info("ยังไม่มีโรงพยาบาล")
@@ -351,6 +354,7 @@ with tab_settings:
                     else:
                         execute("DELETE FROM wards WHERE id=?", (int(r['id']),))
                         st.success("ลบวอร์ดเรียบร้อย — กด R เพื่อรีเฟรชหน้า")
+                        st.rerun()
     else:
         st.info("ยังไม่มีวอร์ด")
 
