@@ -289,13 +289,7 @@ def page_add_patient():
 
         # -------- คอลัมน์ขวา: รพ., วอร์ด, priority, precautions --------
         with col2:
-            # เลือกโรงพยาบาล
-            hospitals = fetch_df("SELECT id, name FROM hospitals ORDER BY name")
-            hosp_map = {row["name"]: row["id"] for _, row in hospitals.iterrows()} if not hospitals.empty else {}
-            hosp_name = st.selectbox("โรงพยาบาล *", list(hosp_map.keys()) or [""])
-            hospital_id = hosp_map.get(hosp_name)
-
-            # เลือกวอร์ด (ขึ้นกับรพ. ที่เลือก)
+            # โหลด ward ตาม hospital_id ที่เลือกจากด้านบน
             wards = fetch_df(
                 "SELECT id, name FROM wards WHERE hospital_id=? ORDER BY name",
                 (hospital_id,),
