@@ -381,7 +381,8 @@ def patient_selector() -> int:
         FROM patients p
         LEFT JOIN hospitals h ON p.hospital_id=h.id
         LEFT JOIN wards w ON p.ward_id=w.id
-        ORDER BY status DESC, patient_name
+        WHERE p.status = 'Admitted'
+        ORDER BY w.name, patient_name
         """
     )
     if df.empty:
