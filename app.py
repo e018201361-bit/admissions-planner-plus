@@ -1,11 +1,5 @@
-# app.py — Admissions Planner PLUS (Chemo + Discharge FULL Version)
-# - Hospitals / wards (add + delete, safe if no patients)
-# - Add patient, planner, dashboard
-# - Patient details, rounds (add + edit), photos, transfers (edit reason)
-# - Chemo module (regimens, BSA, per-cycle, assessments, CSV export)
-# - Discharge → F/U OPD หรือ นัด admit รอบถัดไป (auto สร้าง Planned ใหม่)
-# - Planner: เปลี่ยน Planned → Admitted พร้อมเลือก ward + bed
-# - Sidebar: backup / restore DB
+# app.py — Admissions Planner PLUS (Hybrid Chemo + Discharge FULL Version)
+# ภาษาไทยล้วน
 
 import os
 import sqlite3
@@ -181,14 +175,9 @@ def init_db():
         for name in ("Hospital 1", "Hospital 2", "Hospital 3"):
             c.execute("INSERT INTO hospitals(name) VALUES (?)", (name,))
 
+    # seed / update chemo templates (จะไม่ซ้ำเพราะใช้ name UNIQUE + INSERT OR IGNORE)
+    seed_chemo_templates(c)
     conn.commit()
-
-    # seed chemo templates if empty
-    c.execute("SELECT COUNT(*) FROM chemo_templates")
-    if c.fetchone()[0] == 0:
-        seed_chemo_templates(c)
-        conn.commit()
-
     conn.close()
 
 
@@ -429,6 +418,7 @@ def get_chemo_template_by_name(name: str):
 
 
 def compute_doses_for_template(template_name: str, weight_kg: float, height_cm: float):
+    """คืน list ของยา + template dose (mg) และ BSA ปัจจุบัน"""
     bsa = calc_bsa(weight_kg, height_cm)
     tpl = get_chemo_template_by_name(template_name)
     if not tpl:
@@ -461,7 +451,7 @@ def compute_doses_for_template(template_name: str, weight_kg: float, height_cm: 
                 "dose_per_m2": dose_per_m2,
                 "dose_per_kg": dose_per_kg,
                 "fixed_dose_mg": fixed_dose_mg,
-                "dose_mg": round(dose_mg, 1) if isinstance(dose_mg, (int, float)) else None,
+                "template_dose_mg": round(dose_mg, 1) if isinstance(dose_mg, (int, float)) else None,
             }
         )
 
@@ -524,8 +514,8 @@ st.set_page_config(page_title="Admissions Planner PLUS", layout="wide")
 init_db()
 ensure_media_dir()
 
-st.title("🗂️ Admissions Planner — PLUS (with Chemo & Discharge module)")
-st.caption("Admit planner + rounds + photos + transfers + chemo + D/C workflow")
+st.title("🗂️ Admissions Planner — PLUS (Chemo Hybrid + Discharge)")
+st.caption("Admit planner + rounds + photos + transfers + chemo (hybrid) + D/C workflow")
 
 TabAdd, TabPlanner, TabDashboard, TabPatient, TabSettings = st.tabs(
     ["➕ เพิ่มผู้ป่วย", "📅 แผน Admit", "📊 Dashboard", "👤 รายละเอียดผู้ป่วย", "⚙️ Settings / Reminders"]
@@ -533,7 +523,7 @@ TabAdd, TabPlanner, TabDashboard, TabPatient, TabSettings = st.tabs(
 
 # ---------------- SETTINGS ----------------
 with TabSettings:
-    st.subheader("การแจ้งเตือน (กดส่งเมื่อพร้อม)")
+    st.subheader("การแจ้งเตือน (LINE Notify)")
 
     with st.expander("LINE Notify"):
         line_token = st.text_input(
@@ -952,6 +942,7 @@ with TabDashboard:
 # ---------------- PATIENT DETAIL + CHEMO + D/C ----------------
 with TabPatient:
     st.subheader("รายละเอียดผู้ป่วย / Rounds / รูป / โยกย้าย / Chemo / D/C")
+
     mini = fetch_df(
         """
         SELECT p.id,
@@ -1213,7 +1204,7 @@ with TabPatient:
             else:
                 st.info("ยังไม่มีประวัติการย้ายสำหรับผู้ป่วยรายนี้")
 
-        # ----- Chemo -----
+        # ----- Chemo (Hybrid) -----
         with T_Chemo:
             st.markdown("### ข้อมูลร่างกายและแผน Chemo")
             c1, c2, c3, c4 = st.columns(4)
@@ -1247,19 +1238,36 @@ with TabPatient:
 
             tmpl_df2 = get_chemo_templates_df()
             tmpl_names = tmpl_df2["name"].tolist()
+
             st.markdown("---")
             st.markdown("### แผน Regimen สำหรับผู้ป่วยรายนี้")
+
             c5, c6, c7 = st.columns(3)
             with c5:
-                regimen_default = data.get("chemo_regimen") or (tmpl_names[0] if tmpl_names else "")
-                regimen_index = (
-                    tmpl_names.index(regimen_default) if regimen_default in tmpl_names else 0
-                )
-                regimen_name = st.selectbox(
+                choices = ["<พิมพ์ชื่อเอง>"] + tmpl_names
+                current_reg = data.get("chemo_regimen") or ""
+                if current_reg in tmpl_names:
+                    default_index = choices.index(current_reg)
+                elif current_reg:
+                    default_index = 0
+                else:
+                    default_index = 0
+
+                choice = st.selectbox(
                     "เลือก regimen",
-                    tmpl_names,
-                    index=regimen_index if tmpl_names else 0,
+                    choices,
+                    index=default_index,
                 )
+
+                if choice == "<พิมพ์ชื่อเอง>":
+                    regimen_name = st.text_input(
+                        "พิมพ์ชื่อ regimen เอง",
+                        value=current_reg,
+                        placeholder="เช่น ICE-GD, DHAP, FLAG-IDA ฯลฯ",
+                    )
+                else:
+                    regimen_name = choice
+
             with c6:
                 total_cycles = st.number_input(
                     "จำนวน cycle ทั้งหมดที่วางแผน",
@@ -1280,7 +1288,7 @@ with TabPatient:
             if st.button("บันทึกแผน Chemo สำหรับคนไข้รายนี้"):
                 execute(
                     "UPDATE patients SET chemo_regimen=?, chemo_total_cycles=?, chemo_interval_days=? WHERE id=?",
-                    (regimen_name, total_cycles or None, interval_days or None, pid),
+                    (regimen_name or None, total_cycles or None, interval_days or None, pid),
                 )
                 st.success("บันทึกแผน Chemo แล้ว")
                 st.rerun()
@@ -1293,7 +1301,8 @@ with TabPatient:
             else:
                 st.info("ยังไม่มีประวัติการให้ Chemo สำหรับผู้ป่วยรายนี้")
 
-            st.markdown("#### เพิ่ม cycle ใหม่")
+            st.markdown("#### เพิ่ม cycle ใหม่ (Hybrid: template + ปรับ dose manual)")
+
             if len(chemo_df):
                 max_cycle = int(chemo_df["Cycle"].max())
             else:
@@ -1316,49 +1325,101 @@ with TabPatient:
                 )
             with c10:
                 dose_factor = st.slider(
-                    "ปรับ % dose (เช่น 0.75 = 75%)",
+                    "ตัวคูณเริ่มต้นจาก template (เช่น 0.75 = 75%)",
                     min_value=0.25,
                     max_value=1.5,
                     value=1.0,
                     step=0.05,
                 )
 
-            if st.button("คำนวณ dose และบันทึก cycle นี้"):
+            manual_doses = {}
+            rows = []
+            if regimen_name:
+                rows, _ = compute_doses_for_template(regimen_name, weight_kg, height_cm)
+
+            # ถ้าไม่มี template → ยังไม่รองรับแบบราย drug (ต้องใส่ template เพิ่มในอนาคต)
+            if not rows:
+                st.warning(
+                    "regimen นี้ยังไม่มี template สำหรับคำนวณ dose อัตโนมัติ "
+                    "ถ้าต้องการให้ระบบช่วยคิด dose เป็นรายยา "
+                    "ต้องสร้าง template ให้ regimen นี้ในโค้ดก่อน"
+                )
+            else:
+                st.markdown("ปรับ dose แต่ละตัว (mg) ก่อนบันทึก (จะใช้เป็นฐานสำหรับ cycle ถัดไป)")
+
+                prev_cycle_no = int(cycle_no) - 1
+                prev_map = {}
+                if prev_cycle_no >= 1:
+                    prev_df = fetch_df(
+                        "SELECT drug_name, dose_mg FROM chemo_courses WHERE patient_id=? AND cycle_no=?",
+                        (pid, prev_cycle_no),
+                    )
+                    prev_map = {
+                        r["drug_name"]: r["dose_mg"]
+                        for _, r in prev_df.iterrows()
+                        if r["dose_mg"] is not None
+                    }
+
+                for row in rows:
+                    drug = row["drug_name"]
+                    template_dose = row["template_dose_mg"]
+                    prev_dose = prev_map.get(drug)
+
+                    if prev_dose is not None:
+                        default = float(prev_dose)
+                        info = f"(cycle {prev_cycle_no}: {prev_dose} mg, template {template_dose} mg)"
+                    else:
+                        if template_dose is not None:
+                            default = float(template_dose * dose_factor)
+                            info = f"(template {template_dose} mg × {dose_factor:.2f})"
+                        else:
+                            default = 0.0
+                            info = "(ไม่มี template dose)"
+
+                    dose_input = st.number_input(
+                        f"{drug} {info}",
+                        min_value=0.0,
+                        max_value=100000.0,
+                        value=default,
+                        step=1.0,
+                        key=f"dose_input_{pid}_{cycle_no}_{drug}",
+                    )
+                    manual_doses[drug] = dose_input
+
+            if st.button("บันทึก chemo cycle นี้ (ใช้ dose ตามที่ระบุด้านบน)"):
                 if not regimen_name:
                     st.error("ยังไม่ได้ตั้ง regimen ให้คนไข้รายนี้")
                 elif not weight_kg and not height_cm:
-                    st.error("กรุณากรอกน้ำหนัก/ส่วนสูงอย่างน้อย 1 ค่า เพื่อคำนวณ dose")
+                    st.error("กรุณากรอกน้ำหนัก/ส่วนสูงอย่างน้อย 1 ค่า (เพื่อ reference BSA)")
+                elif not rows:
+                    st.error("regimen นี้ยังไม่มี template จึงยังไม่รองรับบันทึกเป็นรายยาแบบอัตโนมัติ")
                 else:
-                    rows, _ = compute_doses_for_template(regimen_name, weight_kg, height_cm)
-                    if not rows:
-                        st.error("ไม่พบ template สำหรับ regimen นี้")
-                    else:
-                        for row in rows:
-                            base_dose = row["dose_mg"]
-                            final_dose = base_dose * dose_factor if base_dose is not None else None
-                            execute(
-                                """INSERT INTO chemo_courses(
-                                        patient_id, cycle_no, given_date, regimen_name,
-                                        drug_name, mode, dose_per_m2, dose_per_kg, fixed_dose_mg,
-                                        dose_mg, dose_factor, notes
-                                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                                (
-                                    pid,
-                                    int(cycle_no),
-                                    given_date.isoformat(),
-                                    regimen_name,
-                                    row["drug_name"],
-                                    row["mode"],
-                                    row["dose_per_m2"],
-                                    row["dose_per_kg"],
-                                    row["fixed_dose_mg"],
-                                    float(final_dose) if final_dose is not None else None,
-                                    float(dose_factor),
-                                    None,
-                                ),
-                            )
-                        st.success("บันทึก cycle นี้เรียบร้อย")
-                        st.rerun()
+                    for row in rows:
+                        drug = row["drug_name"]
+                        final_dose = float(manual_doses.get(drug, 0.0))
+                        execute(
+                            """INSERT INTO chemo_courses(
+                                    patient_id, cycle_no, given_date, regimen_name,
+                                    drug_name, mode, dose_per_m2, dose_per_kg, fixed_dose_mg,
+                                    dose_mg, dose_factor, notes
+                                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (
+                                pid,
+                                int(cycle_no),
+                                given_date.isoformat(),
+                                regimen_name,
+                                drug,
+                                row["mode"],
+                                row["dose_per_m2"],
+                                row["dose_per_kg"],
+                                row["fixed_dose_mg"],
+                                final_dose,
+                                float(dose_factor),
+                                None,
+                            ),
+                        )
+                    st.success("บันทึก chemo cycle นี้เรียบร้อย (dose แต่ละตัวจะใช้เป็นฐานสำหรับ cycle ถัดไป)")
+                    st.rerun()
 
             st.markdown("---")
             st.markdown("### การประเมินผล (CT / PET / BM)")
