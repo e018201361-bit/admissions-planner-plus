@@ -1,8 +1,11 @@
-# app.py — Admissions Planner PLUS (Chemo FULL Version)
-# - Admissions planner as before
-# - Hospital/ward add + delete (safe if no patients)
-# - Patient details, rounds, photos, transfers
-# - NEW: Chemo module per patient (regimen templates, BSA, cycle logging, CSV export)
+# app.py — Admissions Planner PLUS (Chemo + Discharge FULL Version)
+# - Hospitals / wards (add + delete, safe if no patients)
+# - Add patient, planner, dashboard
+# - Patient details, rounds (add + edit), photos, transfers (edit reason)
+# - Chemo module (regimens, BSA, per-cycle, assessments, CSV export)
+# - Discharge → F/U OPD หรือ นัด admit รอบถัดไป (auto สร้าง Planned ใหม่)
+# - Planner: เปลี่ยน Planned → Admitted พร้อมเลือก ward + bed
+# - Sidebar: backup / restore DB
 
 import os
 import sqlite3
@@ -207,7 +210,7 @@ def seed_chemo_templates(c):
             {"drug": "Vincristine", "mode": "per_m2", "dose_per_m2": 1.4, "max_mg": 2.0},
             {"drug": "Prednisolone", "mode": "fixed", "fixed_dose_mg": 100.0},
         ],
-        # ICE (simplified; Carboplatin here as approximate per_m2)
+        # ICE (simplified)
         "ICE": [
             {"drug": "Ifosfamide", "mode": "per_m2", "dose_per_m2": 5000.0},
             {"drug": "Carboplatin", "mode": "per_m2", "dose_per_m2": 400.0},
@@ -236,7 +239,7 @@ def seed_chemo_templates(c):
             {"drug": "Cyclophosphamide", "mode": "per_m2", "dose_per_m2": 750.0},
             {"drug": "Rituximab", "mode": "per_kg", "dose_per_kg": 375.0},
         ],
-        # HyperCVAD (simplified block A only)
+        # HyperCVAD (simplified block A)
         "HyperCVAD": [
             {"drug": "Cyclophosphamide", "mode": "per_m2", "dose_per_m2": 300.0},
             {"drug": "Vincristine", "mode": "per_m2", "dose_per_m2": 1.4, "max_mg": 2.0},
@@ -290,7 +293,8 @@ def set_setting(key, value):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "INSERT INTO settings(key,value) VALUES(?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, value),
     )
     conn.commit()
@@ -315,7 +319,10 @@ def get_hospitals():
 
 def get_wards(hospital_id=None):
     if hospital_id:
-        return fetch_df("SELECT id, name FROM wards WHERE hospital_id=? ORDER BY name", (hospital_id,))
+        return fetch_df(
+            "SELECT id, name FROM wards WHERE hospital_id=? ORDER BY name",
+            (hospital_id,),
+        )
     return fetch_df(
         """SELECT w.id, w.name, h.name AS hospital
            FROM wards w JOIN hospitals h ON w.hospital_id = h.id
@@ -327,17 +334,22 @@ def get_patients(filters=None):
     where, params = [], []
     f = filters or {}
     if f.get("hospital_id"):
-        where.append("p.hospital_id=?"); params.append(f["hospital_id"])
+        where.append("p.hospital_id=?")
+        params.append(f["hospital_id"])
     if f.get("ward_id"):
-        where.append("p.ward_id=?"); params.append(f["ward_id"])
+        where.append("p.ward_id=?")
+        params.append(f["ward_id"])
     if f.get("status"):
-        where.append("p.status=?"); params.append(f["status"])
+        where.append("p.status=?")
+        params.append(f["status"])
     if f.get("planned_only"):
         where.append("p.status='Planned'")
     if f.get("date_start"):
-        where.append("(p.planned_admit_date>=? OR p.admit_date>=?)"); params += [f["date_start"], f["date_start"]]
+        where.append("(p.planned_admit_date>=? OR p.admit_date>=?)")
+        params += [f["date_start"], f["date_start"]]
     if f.get("date_end"):
-        where.append("(p.planned_admit_date<=? OR p.admit_date<=?)"); params += [f["date_end"], f["date_end"]]
+        where.append("(p.planned_admit_date<=? OR p.admit_date<=?)")
+        params += [f["date_end"], f["date_end"]]
 
     where_clause = "WHERE " + " AND ".join(where) if where else ""
 
@@ -512,22 +524,23 @@ st.set_page_config(page_title="Admissions Planner PLUS", layout="wide")
 init_db()
 ensure_media_dir()
 
-st.title("🗂️ Admissions Planner — PLUS (with Chemo module)")
-st.caption("Admit planner + rounds + photos + transfers + chemo regimens & cycles + CSV export")
+st.title("🗂️ Admissions Planner — PLUS (with Chemo & Discharge module)")
+st.caption("Admit planner + rounds + photos + transfers + chemo + D/C workflow")
 
-
-# Tabs
 TabAdd, TabPlanner, TabDashboard, TabPatient, TabSettings = st.tabs(
     ["➕ เพิ่มผู้ป่วย", "📅 แผน Admit", "📊 Dashboard", "👤 รายละเอียดผู้ป่วย", "⚙️ Settings / Reminders"]
 )
-
 
 # ---------------- SETTINGS ----------------
 with TabSettings:
     st.subheader("การแจ้งเตือน (กดส่งเมื่อพร้อม)")
 
     with st.expander("LINE Notify"):
-        line_token = st.text_input("LINE Notify Token", value=get_setting("line_token", ""), type="password")
+        line_token = st.text_input(
+            "LINE Notify Token",
+            value=get_setting("line_token", ""),
+            type="password",
+        )
         if st.button("บันทึก Token LINE"):
             set_setting("line_token", line_token.strip())
             st.success("บันทึกแล้ว")
@@ -537,11 +550,13 @@ with TabSettings:
     col1, col2 = st.columns(2)
     with col1:
         round_start = st.time_input(
-            "เริ่ม", value=pd.to_datetime(get_setting("round_start", "08:00")).time()
+            "เริ่ม",
+            value=pd.to_datetime(get_setting("round_start", "08:00")).time(),
         )
     with col2:
         round_end = st.time_input(
-            "สิ้นสุด", value=pd.to_datetime(get_setting("round_end", "12:00")).time()
+            "สิ้นสุด",
+            value=pd.to_datetime(get_setting("round_end", "12:00")).time(),
         )
     if st.button("บันทึกช่วงเวลา"):
         set_setting("round_start", round_start.strftime("%H:%M"))
@@ -572,7 +587,10 @@ with TabSettings:
                 st.write(f"`#{int(r['id'])}` — **{r['name']}**")
             with c2:
                 if st.button("🗑️ ลบ", key=f"del_hosp_{int(r['id'])}"):
-                    cnt = fetch_df("SELECT COUNT(*) AS c FROM patients WHERE hospital_id=?", (int(r["id"]),))["c"][0]
+                    cnt = fetch_df(
+                        "SELECT COUNT(*) AS c FROM patients WHERE hospital_id=?",
+                        (int(r["id"]),),
+                    )["c"][0]
                     if cnt > 0:
                         st.error("ลบไม่ได้: ยังมีผู้ป่วยในโรงพยาบาลนี้")
                     else:
@@ -587,7 +605,11 @@ with TabSettings:
     # Add ward
     hospitals = get_hospitals()
     hosp_map = dict(zip(hospitals["name"], hospitals["id"])) if len(hospitals) else {}
-    hosp_choice = st.selectbox("เลือกโรงพยาบาลเพื่อเพิ่มวอร์ด", [""] + hospitals["name"].tolist())
+    hosp_choice = st.selectbox(
+        "เลือกโรงพยาบาลเพื่อเพิ่มวอร์ด",
+        [""] + hospitals["name"].tolist(),
+    )
+
     with st.form("add_ward_form", clear_on_submit=True):
         ward_name = st.text_input("ชื่อวอร์ด")
         submitted = st.form_submit_button("เพิ่มวอร์ด")
@@ -598,7 +620,10 @@ with TabSettings:
                 st.error("กรุณากรอกชื่อวอร์ด")
             else:
                 try:
-                    execute("INSERT INTO wards(hospital_id, name) VALUES (?,?)", (hosp_map[hosp_choice], ward_name.strip()))
+                    execute(
+                        "INSERT INTO wards(hospital_id, name) VALUES (?,?)",
+                        (hosp_map[hosp_choice], ward_name.strip()),
+                    )
                     st.success("เพิ่มวอร์ดแล้ว")
                     st.rerun()
                 except sqlite3.IntegrityError:
@@ -613,7 +638,10 @@ with TabSettings:
                 st.write(f"`#{int(r['id'])}` — **{r['name']}** (_{r['hospital']}_)")
             with c2:
                 if st.button("🗑️ ลบ", key=f"del_ward_{int(r['id'])}"):
-                    cnt = fetch_df("SELECT COUNT(*) AS c FROM patients WHERE ward_id=?", (int(r["id"]),))["c"][0]
+                    cnt = fetch_df(
+                        "SELECT COUNT(*) AS c FROM patients WHERE ward_id=?",
+                        (int(r["id"]),),
+                    )["c"][0]
                     if cnt > 0:
                         st.error("ลบไม่ได้: ยังมีผู้ป่วยอยู่ในวอร์ดนี้")
                     else:
@@ -641,11 +669,12 @@ with TabSettings:
 
     st.subheader("🔔 ส่งแจ้งเตือน Missed Rounds ตอนนี้ (manual)")
     miss_df = fetch_df(
-        """SELECT p.id, p.patient_name, h.name AS hospital, COALESCE(w.name,'') AS ward, p.last_rounded_at
-            FROM patients p
-            LEFT JOIN hospitals h ON p.hospital_id=h.id
-            LEFT JOIN wards w ON p.ward_id=w.id
-            WHERE p.status='Admitted'"""
+        """SELECT p.id, p.patient_name, h.name AS hospital,
+                  COALESCE(w.name,'') AS ward, p.last_rounded_at
+           FROM patients p
+           LEFT JOIN hospitals h ON p.hospital_id=h.id
+           LEFT JOIN wards w ON p.ward_id=w.id
+           WHERE p.status='Admitted'"""
     )
     missed = []
     for _, r in miss_df.iterrows():
@@ -666,12 +695,15 @@ with TabSettings:
             if st.button("ส่ง LINE Notify ตอนนี้"):
                 token = get_setting("line_token", "")
                 if token:
-                    ok = notify_line(token, "ยังไม่มีบันทึกราวนด์วันนี้สำหรับ:\n" + "\n".join(missed))
+                    ok = notify_line(
+                        token,
+                        "ยังไม่มีบันทึกราวนด์วันนี้สำหรับ:\n" + "\n".join(missed),
+                    )
                     st.success("ส่งแล้ว" if ok else "ส่งไม่สำเร็จ (ตรวจ token/เน็ต)")
                 else:
                     st.error("ยังไม่ได้ตั้งค่า LINE Token")
         with c2:
-            st.info("Email แจ้งเตือนยังไม่ได้ตั้งค่าในเวอร์ชันนี้ (สามารถเพิ่มภายหลังได้)")
+            st.info("Email แจ้งเตือนยังไม่ได้ตั้งค่าในเวอร์ชันนี้")
     else:
         st.info("วันนี้ครบทุกเคสแล้ว 🎉")
 
@@ -690,7 +722,10 @@ with TabAdd:
             age = st.number_input("อายุ", min_value=0, max_value=120, step=1)
         with c2:
             sex = st.selectbox("เพศ", ["", "M", "F", "Other"])
-            hosp = st.selectbox("โรงพยาบาล *", [""] + hospitals["name"].tolist())
+            hosp = st.selectbox(
+                "โรงพยาบาล *",
+                [""] + hospitals["name"].tolist(),
+            )
             ward_id = None
             if hosp:
                 wards_df = get_wards(hosp_ids[hosp])
@@ -707,7 +742,7 @@ with TabAdd:
         c4, c5, c6 = st.columns(3)
         with c4:
             planned_date = st.date_input("Planned Admit Date", value=date.today())
-            admit_date = st.date_input("Admit Date (ถ้ามี)", value=None)
+            admit_date = st.date_input("Admit Date (ถ้ามี)", value=date.today())
         with c5:
             bed = st.text_input("เตียง (ถ้ามี)")
             diagnosis = st.text_input("Diagnosis")
@@ -754,11 +789,19 @@ with TabAdd:
 with TabPlanner:
     st.subheader("รายการวางแผน Admit (Planned)")
     hospitals = get_hospitals()
-    hosp_filter = st.selectbox("โรงพยาบาล", ["ทั้งหมด"] + hospitals["name"].tolist(), index=0)
+    hosp_filter = st.selectbox(
+        "โรงพยาบาล",
+        ["ทั้งหมด"] + hospitals["name"].tolist(),
+        index=0,
+    )
     ward_id_filter = None
     if hosp_filter != "ทั้งหมด":
         wards_df = get_wards(dict(zip(hospitals["name"], hospitals["id"]))[hosp_filter])
-        ward_choice = st.selectbox("วอร์ด", ["ทั้งหมด"] + wards_df["name"].tolist(), index=0)
+        ward_choice = st.selectbox(
+            "วอร์ด",
+            ["ทั้งหมด"] + wards_df["name"].tolist(),
+            index=0,
+        )
         if ward_choice != "ทั้งหมด":
             ward_id_filter = dict(zip(wards_df["name"], wards_df["id"]))[ward_choice]
 
@@ -768,27 +811,109 @@ with TabPlanner:
     with d2:
         end = st.date_input("ถึงวันที่", value=date.today() + timedelta(days=14))
 
-    filters = {"planned_only": True, "date_start": start.isoformat(), "date_end": end.isoformat()}
+    filters = {
+        "planned_only": True,
+        "date_start": start.isoformat(),
+        "date_end": end.isoformat(),
+    }
     if hosp_filter != "ทั้งหมด":
-        filters["hospital_id"] = dict(zip(hospitals["name"], hospitals["id"]))[hosp_filter]
+        filters["hospital_id"] = dict(zip(hospitals["name"], hospitals["id"]))[
+            hosp_filter
+        ]
     if ward_id_filter:
         filters["ward_id"] = ward_id_filter
 
     df_plan = get_patients(filters)
     st.dataframe(df_plan, use_container_width=True, hide_index=True)
 
+    # --- Promote Planned -> Admitted ---
+    st.markdown("---")
+    st.markdown("### เปลี่ยนเคส Planned เป็น Admitted (เริ่ม admit จริง)")
+
+    planned_list = fetch_df(
+        """
+        SELECT p.id,
+               p.patient_name AS name,
+               COALESCE(p.mrn,'') AS mrn,
+               h.name AS hosp,
+               p.planned_admit_date AS planned_date
+        FROM patients p
+        JOIN hospitals h ON p.hospital_id = h.id
+        WHERE p.status='Planned'
+        ORDER BY COALESCE(p.planned_admit_date, date('now')) ASC
+        """
+    )
+
+    if len(planned_list) == 0:
+        st.info("ยังไม่มีเคส Planned สำหรับเปลี่ยนเป็น Admitted")
+    else:
+        options = {
+            f"{row['name']} | {row['mrn']} | {row['hosp']} | planned {row['planned_date'] or '-'}": int(
+                row["id"]
+            )
+            for _, row in planned_list.iterrows()
+        }
+        label = st.selectbox(
+            "เลือกเคสที่เริ่ม admit แล้ว",
+            list(options.keys()),
+        )
+        admit_pid = options[label]
+
+        hospitals_all = get_hospitals()
+        hosp_ids2 = dict(zip(hospitals_all["name"], hospitals_all["id"])) if len(hospitals_all) else {}
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            new_hosp_name = st.selectbox(
+                "โรงพยาบาล (สำหรับ admit จริง)",
+                hospitals_all["name"].tolist(),
+            )
+        with c2:
+            wards_df2 = get_wards(hosp_ids2[new_hosp_name]) if new_hosp_name else pd.DataFrame()
+            ward_name = st.selectbox(
+                "วอร์ด",
+                [""] + wards_df2["name"].tolist(),
+            )
+            ward_id2 = dict(zip(wards_df2["name"], wards_df2["id"])).get(ward_name) if ward_name else None
+        with c3:
+            bed_new = st.text_input("เตียง (ถ้ามี)", value="")
+
+        admit_real_date = st.date_input("วันที่ admit จริง", value=date.today())
+
+        if st.button("เปลี่ยนสถานะเป็น Admitted สำหรับเคสนี้"):
+            execute(
+                "UPDATE patients SET status='Admitted', admit_date=?, hospital_id=?, ward_id=?, bed=? WHERE id=?",
+                (
+                    admit_real_date.isoformat(),
+                    hosp_ids2[new_hosp_name],
+                    ward_id2,
+                    bed_new or None,
+                    admit_pid,
+                ),
+            )
+            st.success("อัปเดตเคสเป็น Admitted แล้ว (จะไปอยู่ในรายชื่อที่ต้อง round)")
+            st.rerun()
+
 
 # ---------------- DASHBOARD ----------------
 with TabDashboard:
     st.subheader("สรุปภาพรวม")
-    tot_planned = fetch_df("SELECT COUNT(*) AS c FROM patients WHERE status='Planned'")["c"][0]
-    tot_admitted = fetch_df("SELECT COUNT(*) AS c FROM patients WHERE status='Admitted'")["c"][0]
-    tot_discharged = fetch_df("SELECT COUNT(*) AS c FROM patients WHERE status='Discharged'")["c"][0]
+    tot_planned = fetch_df(
+        "SELECT COUNT(*) AS c FROM patients WHERE status='Planned'"
+    )["c"][0]
+    tot_admitted = fetch_df(
+        "SELECT COUNT(*) AS c FROM patients WHERE status='Admitted'"
+    )["c"][0]
+    tot_discharged = fetch_df(
+        "SELECT COUNT(*) AS c FROM patients WHERE status='Discharged'"
+    )["c"][0]
     planned_7d = fetch_df(
-        "SELECT COUNT(*) AS c FROM patients WHERE status='Planned' AND planned_admit_date BETWEEN date('now','localtime') AND date('now','localtime','+7 day')"
+        "SELECT COUNT(*) AS c FROM patients WHERE status='Planned' "
+        "AND planned_admit_date BETWEEN date('now','localtime') "
+        "AND date('now','localtime','+7 day')"
     )["c"][0]
     admitted_today = fetch_df(
-        "SELECT COUNT(*) AS c FROM patients WHERE status='Admitted' AND admit_date = date('now','localtime')"
+        "SELECT COUNT(*) AS c FROM patients WHERE status='Admitted' "
+        "AND admit_date = date('now','localtime')"
     )["c"][0]
 
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -806,48 +931,70 @@ with TabDashboard:
         rows.append(
             {
                 "Hospital": r["name"],
-                "Planned": fetch_df("SELECT COUNT(*) AS c FROM patients WHERE hospital_id=? AND status='Planned'", (hid,))["c"][0],
-                "Admitted": fetch_df("SELECT COUNT(*) AS c FROM patients WHERE hospital_id=? AND status='Admitted'", (hid,))["c"][0],
-                "Discharged": fetch_df("SELECT COUNT(*) AS c FROM patients WHERE hospital_id=? AND status='Discharged'", (hid,))["c"][0],
+                "Planned": fetch_df(
+                    "SELECT COUNT(*) AS c FROM patients WHERE hospital_id=? AND status='Planned'",
+                    (hid,),
+                )["c"][0],
+                "Admitted": fetch_df(
+                    "SELECT COUNT(*) AS c FROM patients WHERE hospital_id=? AND status='Admitted'",
+                    (hid,),
+                )["c"][0],
+                "Discharged": fetch_df(
+                    "SELECT COUNT(*) AS c FROM patients WHERE hospital_id=? AND status='Discharged'",
+                    (hid,),
+                )["c"][0],
             }
         )
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
-# ---------------- PATIENT DETAIL + CHEMO ----------------
+# ---------------- PATIENT DETAIL + CHEMO + D/C ----------------
 with TabPatient:
-    st.subheader("รายละเอียดผู้ป่วย / Rounds / รูป / โยกย้าย / Chemo")
+    st.subheader("รายละเอียดผู้ป่วย / Rounds / รูป / โยกย้าย / Chemo / D/C")
     mini = fetch_df(
-        """SELECT p.id, p.patient_name AS name, COALESCE(p.mrn,'') AS mrn,
-                   h.name AS hosp, COALESCE(w.name,'') AS ward
-            FROM patients p
-            LEFT JOIN hospitals h ON p.hospital_id=h.id
-            LEFT JOIN wards w ON p.ward_id=w.id
-            WHERE p.status IN ('Planned','Admitted')
-            ORDER BY p.id DESC"""
+        """
+        SELECT p.id,
+               p.patient_name AS name,
+               COALESCE(p.mrn,'') AS mrn,
+               h.name AS hosp,
+               COALESCE(w.name,'') AS ward,
+               COALESCE(p.bed,'') AS bed
+        FROM patients p
+        LEFT JOIN hospitals h ON p.hospital_id=h.id
+        LEFT JOIN wards w ON p.ward_id=w.id
+        WHERE p.status IN ('Planned','Admitted')
+        ORDER BY p.id DESC
+        """
     )
 
     if len(mini) == 0:
         st.info("ยังไม่มีผู้ป่วย (หรือทุกคนจำหน่ายแล้ว)")
     else:
         label_map = {
-            f"{r['name']} | {r['mrn']} | {r['hosp']} | {r['ward']}": int(r["id"])
+            f"{r['name']} | {r['mrn']} | {r['hosp']} | {r['ward']} | เตียง {r['bed'] or '-'}": int(
+                r["id"]
+            )
             for _, r in mini.iterrows()
         }
         choice = st.selectbox("เลือกผู้ป่วย", list(label_map.keys()))
         pid = label_map[choice]
         data = get_patient_by_id(pid)
 
-        # basic info
+        hosp_name = fetch_df(
+            "SELECT name FROM hospitals WHERE id=?",
+            (data["hospital_id"],),
+        ).squeeze()
+        if data.get("ward_id"):
+            ward_name = fetch_df(
+                "SELECT name FROM wards WHERE id=?",
+                (data["ward_id"],),
+            ).squeeze()
+        else:
+            ward_name = "-"
+
         st.markdown(
             f"**ชื่อ:** {data['patient_name']}  |  **HN/MRN:** {data.get('mrn','') or ''}  |  **สถานะ:** {data.get('status','')}"
-        )
-        hosp_name = fetch_df("SELECT name FROM hospitals WHERE id=?", (data["hospital_id"],)).squeeze()
-        ward_name = (
-            fetch_df("SELECT name FROM wards WHERE id=?", (data.get("ward_id"),)).squeeze()
-            if data.get("ward_id")
-            else "-"
         )
         st.markdown(f"**โรงพยาบาล/วอร์ด:** {hosp_name} / {ward_name}")
         st.markdown(
@@ -855,13 +1002,24 @@ with TabPatient:
         )
         st.markdown(f"**Last rounded:** {data.get('last_rounded_at') or '-'}")
 
+        # Quick bed edit
+        with st.expander("✏️ แก้ไขเตียงอย่างรวดเร็ว"):
+            new_bed = st.text_input("เตียงใหม่", value=data.get("bed") or "")
+            if st.button("บันทึกเตียงใหม่", key=f"save_bed_{pid}"):
+                execute("UPDATE patients SET bed=? WHERE id=?", (new_bed or None, pid))
+                st.success("อัปเดตเตียงเรียบร้อย")
+                st.rerun()
+
         # sub-tabs inside patient
-        T_Round, T_Photo, T_Transfer, T_Chemo = st.tabs([
-            "📝 Rounds notes",
-            "🖼️ Photos",
-            "🔁 โยกย้ายวอร์ด",
-            "💉 Chemo",
-        ])
+        T_Round, T_Photo, T_Transfer, T_Chemo, T_Discharge = st.tabs(
+            [
+                "📝 Rounds notes",
+                "🖼️ Photos",
+                "🔁 โยกย้ายวอร์ด",
+                "💉 Chemo",
+                "🚪 Discharge / Next plan",
+            ]
+        )
 
         # ----- Rounds -----
         with T_Round:
@@ -877,19 +1035,60 @@ with TabPatient:
                             "INSERT INTO rounds_logs(patient_id, author, note) VALUES (?,?,?)",
                             (pid, author or None, note.strip()),
                         )
-                        execute("UPDATE patients SET last_rounded_at=datetime('now','localtime') WHERE id=?", (pid,))
+                        execute(
+                            "UPDATE patients SET last_rounded_at=datetime('now','localtime') WHERE id=?",
+                            (pid,),
+                        )
                         st.success("บันทึกแล้ว")
                         st.rerun()
+
             logs = fetch_df(
-                "SELECT created_at, author, note FROM rounds_logs WHERE patient_id=? ORDER BY id DESC",
+                "SELECT id, created_at, author, note FROM rounds_logs WHERE patient_id=? ORDER BY id DESC",
                 (pid,),
             )
-            st.dataframe(logs, use_container_width=True, hide_index=True)
+            if len(logs):
+                st.dataframe(
+                    logs[["created_at", "author", "note"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.markdown("#### แก้ไขบันทึกราวนด์ที่เคยบันทึกแล้ว")
+                options = {
+                    f"{row['created_at']} — {row['author'] or ''}": int(row["id"])
+                    for _, row in logs.iterrows()
+                }
+                selected_label = st.selectbox(
+                    "เลือกบันทึกที่ต้องการแก้ไข",
+                    list(options.keys()),
+                )
+                edit_id = options[selected_label]
+                row = logs[logs["id"] == edit_id].iloc[0]
+
+                with st.form(f"edit_round_{pid}_{edit_id}"):
+                    new_author = st.text_input("ผู้บันทึก", value=row["author"] or "")
+                    new_note = st.text_area(
+                        "บันทึกราวนด์",
+                        value=row["note"] or "",
+                        height=140,
+                    )
+                    if st.form_submit_button("บันทึกการแก้ไข"):
+                        execute(
+                            "UPDATE rounds_logs SET author=?, note=? WHERE id=?",
+                            (new_author or None, new_note or None, int(edit_id)),
+                        )
+                        st.success("แก้ไขบันทึกราวนด์เรียบร้อย")
+                        st.rerun()
+            else:
+                st.info("ยังไม่มีบันทึกราวนด์สำหรับผู้ป่วยรายนี้")
 
         # ----- Photos -----
         with T_Photo:
             st.markdown("อัปโหลดรูปภาพที่เกี่ยวข้อง")
-            file = st.file_uploader("เลือกรูป", type=["png", "jpg", "jpeg", "gif", "webp"])
+            file = st.file_uploader(
+                "เลือกรูป",
+                type=["png", "jpg", "jpeg", "gif", "webp"],
+            )
             caption = st.text_input("คำอธิบายรูป (ถ้ามี)")
             if st.button("อัปโหลดรูป"):
                 if file is None:
@@ -907,6 +1106,7 @@ with TabPatient:
                     )
                     st.success("อัปโหลดแล้ว")
                     st.rerun()
+
             gal = fetch_df(
                 "SELECT id, file_path, caption, uploaded_at FROM patient_photos WHERE patient_id=? ORDER BY id DESC",
                 (pid,),
@@ -924,9 +1124,17 @@ with TabPatient:
             st.markdown("ย้ายโรงพยาบาล/วอร์ด พร้อมบันทึกประวัติ")
             hospitals_all = get_hospitals()
             hosp_ids2 = dict(zip(hospitals_all["name"], hospitals_all["id"])) if len(hospitals_all) else {}
-            new_hosp = st.selectbox("ย้ายไปโรงพยาบาล", hospitals_all["name"].tolist(), index=0)
+            new_hosp = st.selectbox(
+                "ย้ายไปโรงพยาบาล",
+                hospitals_all["name"].tolist(),
+                index=0,
+            )
             wards_df2 = get_wards(hosp_ids2[new_hosp]) if new_hosp else pd.DataFrame()
-            new_ward = st.selectbox("ย้ายไปวอร์ด", [""] + wards_df2["name"].tolist(), index=0)
+            new_ward = st.selectbox(
+                "ย้ายไปวอร์ด",
+                [""] + wards_df2["name"].tolist(),
+                index=0,
+            )
             reason = st.text_input("เหตุผล/หมายเหตุการย้าย", value="")
             if st.button("ย้ายตอนนี้"):
                 to_hid = hosp_ids2[new_hosp]
@@ -936,31 +1144,74 @@ with TabPatient:
                     else None
                 )
                 execute(
-                    "INSERT INTO transfers(patient_id, from_hospital_id, from_ward_id, to_hospital_id, to_ward_id, reason) VALUES (?,?,?,?,?,?)",
+                    "INSERT INTO transfers(patient_id, from_hospital_id, from_ward_id, to_hospital_id, to_ward_id, reason) "
+                    "VALUES (?,?,?,?,?,?)",
                     (pid, data["hospital_id"], data.get("ward_id"), to_hid, to_wid, reason or None),
                 )
-                execute("UPDATE patients SET hospital_id=?, ward_id=? WHERE id=?", (to_hid, to_wid, pid))
+                execute(
+                    "UPDATE patients SET hospital_id=?, ward_id=? WHERE id=?",
+                    (to_hid, to_wid, pid),
+                )
                 st.success("ย้ายเรียบร้อย")
                 st.rerun()
 
             hist = fetch_df(
-                """SELECT t.moved_at AS Date,
-                           h1.name AS From_hosp,
-                           COALESCE(w1.name,'') AS From_ward,
-                           h2.name AS To_hosp,
-                           COALESCE(w2.name,'') AS To_ward,
-                           t.reason AS Reason
-                    FROM transfers t
-                    LEFT JOIN hospitals h1 ON t.from_hospital_id=h1.id
-                    LEFT JOIN wards w1 ON t.from_ward_id=w1.id
-                    LEFT JOIN hospitals h2 ON t.to_hospital_id=h2.id
-                    LEFT JOIN wards w2 ON t.to_ward_id=w2.id
-                    WHERE t.patient_id=?
-                    ORDER BY t.id DESC""",
+                """
+                SELECT t.id,
+                       t.moved_at,
+                       h1.name AS from_hosp,
+                       COALESCE(w1.name,'') AS from_ward,
+                       h2.name AS to_hosp,
+                       COALESCE(w2.name,'') AS to_ward,
+                       t.reason
+                FROM transfers t
+                LEFT JOIN hospitals h1 ON t.from_hospital_id=h1.id
+                LEFT JOIN wards w1 ON t.from_ward_id=w1.id
+                LEFT JOIN hospitals h2 ON t.to_hospital_id=h2.id
+                LEFT JOIN wards w2 ON t.to_ward_id=w2.id
+                WHERE t.patient_id=?
+                ORDER BY t.id DESC
+                """,
                 (pid,),
             )
             st.markdown("**ประวัติการย้าย**")
-            st.dataframe(hist, use_container_width=True, hide_index=True)
+            if len(hist):
+                st.dataframe(
+                    hist[
+                        ["moved_at", "from_hosp", "from_ward", "to_hosp", "to_ward", "reason"]
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.markdown("#### แก้ไขรายละเอียดการย้ายย้อนหลัง")
+                t_options = {
+                    f"{row['moved_at']} — {row['from_hosp']} ➜ {row['to_hosp']}": int(
+                        row["id"]
+                    )
+                    for _, row in hist.iterrows()
+                }
+                t_label = st.selectbox(
+                    "เลือกเหตุการณ์ที่ต้องการแก้ไข",
+                    list(t_options.keys()),
+                )
+                t_edit_id = t_options[t_label]
+                t_row = hist[hist["id"] == t_edit_id].iloc[0]
+                with st.form(f"edit_transfer_{pid}_{t_edit_id}"):
+                    new_reason = st.text_area(
+                        "รายละเอียด/หมายเหตุ",
+                        value=t_row["reason"] or "",
+                        height=100,
+                    )
+                    if st.form_submit_button("บันทึกการแก้ไขการย้าย"):
+                        execute(
+                            "UPDATE transfers SET reason=? WHERE id=?",
+                            (new_reason or None, int(t_edit_id)),
+                        )
+                        st.success("แก้ไขรายละเอียดการย้ายเรียบร้อย")
+                        st.rerun()
+            else:
+                st.info("ยังไม่มีประวัติการย้ายสำหรับผู้ป่วยรายนี้")
 
         # ----- Chemo -----
         with T_Chemo:
@@ -1001,15 +1252,29 @@ with TabPatient:
             c5, c6, c7 = st.columns(3)
             with c5:
                 regimen_default = data.get("chemo_regimen") or (tmpl_names[0] if tmpl_names else "")
-                regimen_index = tmpl_names.index(regimen_default) if regimen_default in tmpl_names else 0
-                regimen_name = st.selectbox("เลือก regimen", tmpl_names, index=regimen_index if tmpl_names else 0)
+                regimen_index = (
+                    tmpl_names.index(regimen_default) if regimen_default in tmpl_names else 0
+                )
+                regimen_name = st.selectbox(
+                    "เลือก regimen",
+                    tmpl_names,
+                    index=regimen_index if tmpl_names else 0,
+                )
             with c6:
                 total_cycles = st.number_input(
-                    "จำนวน cycle ทั้งหมดที่วางแผน", min_value=0, max_value=100, value=int(data.get("chemo_total_cycles") or 0), step=1
+                    "จำนวน cycle ทั้งหมดที่วางแผน",
+                    min_value=0,
+                    max_value=100,
+                    value=int(data.get("chemo_total_cycles") or 0),
+                    step=1,
                 )
             with c7:
                 interval_days = st.number_input(
-                    "ช่วงห่างระหว่าง cycle (วัน)", min_value=0, max_value=60, value=int(data.get("chemo_interval_days") or 21), step=1
+                    "ช่วงห่างระหว่าง cycle (วัน)",
+                    min_value=0,
+                    max_value=60,
+                    value=int(data.get("chemo_interval_days") or 21),
+                    step=1,
                 )
 
             if st.button("บันทึกแผน Chemo สำหรับคนไข้รายนี้"):
@@ -1029,7 +1294,6 @@ with TabPatient:
                 st.info("ยังไม่มีประวัติการให้ Chemo สำหรับผู้ป่วยรายนี้")
 
             st.markdown("#### เพิ่ม cycle ใหม่")
-            # infer next cycle number
             if len(chemo_df):
                 max_cycle = int(chemo_df["Cycle"].max())
             else:
@@ -1038,11 +1302,26 @@ with TabPatient:
 
             c8, c9, c10 = st.columns(3)
             with c8:
-                cycle_no = st.number_input("Cycle no.", min_value=1, max_value=999, value=next_cycle, step=1)
+                cycle_no = st.number_input(
+                    "Cycle no.",
+                    min_value=1,
+                    max_value=999,
+                    value=next_cycle,
+                    step=1,
+                )
             with c9:
-                given_date = st.date_input("วันที่ให้ยา", value=date.today())
+                given_date = st.date_input(
+                    "วันที่ให้ยา",
+                    value=date.today(),
+                )
             with c10:
-                dose_factor = st.slider("ปรับ % dose (เช่น 0.75 = 75%)", min_value=0.25, max_value=1.5, value=1.0, step=0.05)
+                dose_factor = st.slider(
+                    "ปรับ % dose (เช่น 0.75 = 75%)",
+                    min_value=0.25,
+                    max_value=1.5,
+                    value=1.0,
+                    step=0.05,
+                )
 
             if st.button("คำนวณ dose และบันทึก cycle นี้"):
                 if not regimen_name:
@@ -1050,11 +1329,10 @@ with TabPatient:
                 elif not weight_kg and not height_cm:
                     st.error("กรุณากรอกน้ำหนัก/ส่วนสูงอย่างน้อย 1 ค่า เพื่อคำนวณ dose")
                 else:
-                    rows, bsa_val = compute_doses_for_template(regimen_name, weight_kg, height_cm)
+                    rows, _ = compute_doses_for_template(regimen_name, weight_kg, height_cm)
                     if not rows:
                         st.error("ไม่พบ template สำหรับ regimen นี้")
                     else:
-                        # insert each drug row
                         for row in rows:
                             base_dose = row["dose_mg"]
                             final_dose = base_dose * dose_factor if base_dose is not None else None
@@ -1093,7 +1371,13 @@ with TabPatient:
             with st.form("add_assess_form", clear_on_submit=True):
                 c11, c12, c13 = st.columns(3)
                 with c11:
-                    assess_cycle = st.number_input("หลัง cycle ที่", min_value=0, max_value=999, value=0, step=1)
+                    assess_cycle = st.number_input(
+                        "หลัง cycle ที่",
+                        min_value=0,
+                        max_value=999,
+                        value=0,
+                        step=1,
+                    )
                 with c12:
                     assess_date = st.date_input("วันที่ตรวจ", value=date.today())
                 with c13:
@@ -1128,6 +1412,133 @@ with TabPatient:
                 mime="text/csv",
             )
 
+        # ----- Discharge / Next plan -----
+        with T_Discharge:
+            st.markdown("### วางแผนจำหน่ายผู้ป่วย (D/C) และรอบถัดไป")
+            st.info(f"สถานะปัจจุบัน: **{data.get('status','-')}**")
+
+            dc_date = st.date_input(
+                "วันที่ D/C",
+                value=date.today(),
+                key=f"dc_date_{pid}",
+            )
+
+            plan_type = st.radio(
+                "แผนต่อไปหลัง D/C",
+                ["F/U OPD", "นัด admit รอบถัดไป"],
+                key=f"plan_type_{pid}",
+            )
+
+            next_admit_date = None
+            plan_opd_text = ""
+            weeks_from_now = 0
+
+            if plan_type == "F/U OPD":
+                plan_opd_text = st.text_area(
+                    "รายละเอียด F/U OPD (เช่น นัด OPD 3 เดือน, CBC q1m ฯลฯ)",
+                    key=f"opd_plan_{pid}",
+                )
+            else:
+                mode = st.radio(
+                    "เลือกวิธีกำหนดวันที่ admit รอบถัดไป",
+                    ["เลือกวันที่เอง", "ระบุจำนวนสัปดาห์จากวัน D/C"],
+                    key=f"next_mode_{pid}",
+                )
+                if mode == "เลือกวันที่เอง":
+                    next_admit_date = st.date_input(
+                        "วันที่ admit รอบถัดไป",
+                        value=dc_date + timedelta(days=21),
+                        key=f"next_date_direct_{pid}",
+                    )
+                else:
+                    weeks_from_now = st.number_input(
+                        "อีกกี่สัปดาห์จากวัน D/C",
+                        min_value=1,
+                        max_value=52,
+                        value=3,
+                        step=1,
+                        key=f"weeks_from_dc_{pid}",
+                    )
+                    next_admit_date = dc_date + timedelta(weeks=int(weeks_from_now))
+
+            st.markdown("---")
+            if plan_type == "F/U OPD":
+                if st.button("บันทึก D/C และแผน F/U OPD", key=f"btn_dc_opd_{pid}"):
+                    extra_note = f"[D/C {dc_date.isoformat()}] F/U OPD: {plan_opd_text}\n"
+                    execute(
+                        "UPDATE patients SET status='Discharged', "
+                        "notes = COALESCE(notes,'') || ? "
+                        "WHERE id=?",
+                        (extra_note, pid),
+                    )
+                    st.success(
+                        "บันทึก D/C และแผน F/U OPD แล้ว (เคสนี้จะไม่อยู่ในรายชื่อที่ต้อง round อีก)"
+                    )
+                    st.rerun()
+            else:
+                st.write(f"วันที่ admit รอบถัดไป: **{next_admit_date}**")
+                if st.button(
+                    "บันทึก D/C และสร้างแผน admit รอบถัดไป",
+                    key=f"btn_dc_next_{pid}",
+                ):
+                    if not next_admit_date:
+                        st.error("ยังไม่ได้กำหนดวันที่ admit รอบถัดไป")
+                    else:
+                        extra_note = (
+                            f"[D/C {dc_date.isoformat()}] Planned readmit on "
+                            f"{next_admit_date.isoformat()}\n"
+                        )
+                        execute(
+                            "UPDATE patients SET status='Discharged', "
+                            "notes = COALESCE(notes,'') || ? "
+                            "WHERE id=?",
+                            (extra_note, pid),
+                        )
+
+                        execute(
+                            """
+                            INSERT INTO patients(
+                                patient_name, mrn, age, sex,
+                                hospital_id, ward_id,
+                                status, planned_admit_date, admit_date,
+                                bed, diagnosis, responsible_md,
+                                priority, precautions, notes, last_rounded_at,
+                                weight_kg, height_cm, bsa,
+                                chemo_regimen, chemo_total_cycles, chemo_interval_days
+                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            """,
+                            (
+                                data.get("patient_name"),
+                                data.get("mrn"),
+                                data.get("age"),
+                                data.get("sex"),
+                                data.get("hospital_id"),
+                                None,  # วอร์ดยังไม่ fix
+                                "Planned",
+                                next_admit_date.isoformat(),
+                                None,
+                                None,
+                                data.get("diagnosis"),
+                                data.get("responsible_md"),
+                                data.get("priority"),
+                                data.get("precautions"),
+                                f"Planned readmit after D/C from admission id {pid}",
+                                None,
+                                data.get("weight_kg"),
+                                data.get("height_cm"),
+                                data.get("bsa"),
+                                data.get("chemo_regimen"),
+                                data.get("chemo_total_cycles"),
+                                data.get("chemo_interval_days"),
+                            ),
+                        )
+
+                        st.success(
+                            "บันทึก D/C แล้ว และสร้างรายการ Planned admit รอบถัดไปเรียบร้อย "
+                            "(ไปดูได้ที่หน้า 'แผน Admit')"
+                        )
+                        st.rerun()
+
 
 # ---------------- Sidebar: backup/restore ----------------
 st.sidebar.header("💾 Backup/Restore")
@@ -1140,7 +1551,10 @@ if os.path.exists(DB_PATH):
             mime="application/octet-stream",
         )
 
-up = st.sidebar.file_uploader("อัปโหลดฐานข้อมูล (.db) เพื่อกู้คืน", type=["db"])
+up = st.sidebar.file_uploader(
+    "อัปโหลดฐานข้อมูล (.db) เพื่อกู้คืน",
+    type=["db"],
+)
 if up is not None:
     with open(DB_PATH, "wb") as f:
         f.write(up.read())
