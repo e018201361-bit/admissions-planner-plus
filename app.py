@@ -1493,7 +1493,6 @@ if st.button("บันทึก chemo cycle นี้ (ใช้ dose ตาม
         st.rerun()
 
 
-st.markdown("---")
 st.markdown("### การประเมินผล (CT / PET / BM)")
 
 assess_df = get_chemo_assessments(pid)
@@ -1502,39 +1501,55 @@ if len(assess_df):
 else:
     st.info("ยังไม่มีการบันทึกผล CT/PET/BM")
 
+# ----------------   ตรงนี้คือจุดเริ่มแทน  ----------------
 with st.form("add_assess_form", clear_on_submit=True):
+
     c11, c12, c13 = st.columns(3)
+
     with c11:
         assess_cycle = st.number_input(
             "ผลใน cycle ที่",
             min_value=1,
             max_value=999,
+            value=1,
             step=1,
         )
 
-     with c12:
-        assess_date = st.date_input("วันที่ตรวจ", value=date.today())
-     with c13:
-         assess_type = st.text_input("ชนิดการตรวจ (CT, PET/CT, BM ฯลฯ)")
-                response = st.text_input("Response (CR/PR/SD/PD ฯลฯ)")
-                result_summary = st.text_area("สรุปผลตรวจ")
-                submitted_assess = st.form_submit_button("บันทึกผลการประเมิน")
-                if submitted_assess:
-                    execute(
-                        """INSERT INTO chemo_assessments(
-                                patient_id, cycle_no, assess_date, assess_type, result_summary, response
-                            ) VALUES (?,?,?,?,?,?)""",
-                        (
-                            pid,
-                            int(assess_cycle) if assess_cycle else None,
-                            assess_date.isoformat(),
-                            assess_type or None,
-                            result_summary or None,
-                            response or None,
-                        ),
-                    )
-                    st.success("บันทึกผลการประเมินแล้ว")
-                    st.rerun()
+    with c12:
+        assess_date = st.date_input(
+            "วันที่ตรวจ",
+            value=date.today(),
+        )
+
+    with c13:
+        assess_type = st.selectbox(
+            "ชนิดการตรวจ",
+            ["CT", "PET/CT", "BM", "อื่น ๆ"],
+        )
+
+    assess_result = st.text_area("สรุปผลตรวจ", height=100)
+
+    if st.form_submit_button("บันทึกผลประเมิน"):
+        execute(
+            """
+            INSERT INTO chemo_assessments(
+                patient_id, cycle_no, assess_date, assess_type, result
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                pid,
+                int(assess_cycle),
+                assess_date.isoformat(),
+                assess_type,
+                assess_result.strip(),
+            ),
+        )
+        st.success("บันทึกผล CT/PET/BM เรียบร้อยแล้ว")
+        st.rerun()
+# ----------------   ตรงนี้คือจุดสิ้นสุดแทน  ----------------
+
+st.markdown("----")
+
 
             st.markdown("---")
             st.markdown("### Export ประวัติ Chemo")
