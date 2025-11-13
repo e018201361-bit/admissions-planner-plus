@@ -437,20 +437,26 @@ def page_dashboard():
         FROM patients p
         LEFT JOIN hospitals h ON p.hospital_id = h.id
         LEFT JOIN wards w     ON p.ward_id     = w.id
-        ORDER BY hospital, p.patient_name
+        ORDER BY
+            CASE 
+                WHEN p.status = 'Admitted' THEN 1
+                WHEN p.status = 'Discharged' THEN 2
+                ELSE 3
+            END,
+            h.name,
+            p.patient_name
     """)
 
     if df_detail.empty:
         st.info("ยังไม่มีข้อมูลผู้ป่วย")
         return
 
-    # ตารางแรก: hospital | patient_name | ward | status  (ไม่มี col n)
+    # ตารางแรก
     st.dataframe(df_detail, use_container_width=True)
 
-    # ---------- ตารางล่าง: Pivot สรุปเหมือนเดิม ----------
+    # ---------- ตารางล่าง: Pivot ----------
     st.subheader("สรุปตามโรงพยาบาล (Pivot)")
 
-    # นับจำนวนจาก df_detail แทนการยิง query ใหม่
     df_summary = (
         df_detail
         .groupby(["hospital", "status"])
@@ -464,8 +470,9 @@ def page_dashboard():
         .fillna(0)
         .astype(int)
     )
-    st.dataframe(pivot, use_container_width=True)
 
+    st.dataframe(pivot, use_container_width=True)
+    
 def patient_selector() -> int:
     df = fetch_df(
         """
