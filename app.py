@@ -1580,28 +1580,34 @@ with T_Discharge:
     next_admit_date = None
     plan_opd_text = ""
     weeks_from_now = 0
+    # ค่าเริ่มต้น
+    next_admit_date = None
+    plan_opd_text = ""
+    weeks_from_now = 0
 
+    # เลือกแผนหลัง D/C
     if plan_type == "F/U OPD":
         plan_opd_text = st.text_area(
             "รายละเอียด F/U OPD (เช่น นัด OPD 3 เดือน, CBC q1m ฯลฯ)",
             key=f"opd_plan_{pid}",
         )
-     else:
+    else:
         mode = st.radio(
-            "เลือกวิธีกำหนดวันที่ admit รอบถัดไป",
+            "เลือกวิธีคำนวณวันที่ admit รอบถัดไป",
             ["เลือกวันที่เอง", "ระบุจำนวนสัปดาห์จากวัน D/C"],
             key=f"next_mode_{pid}",
         )
+
         if mode == "เลือกวันที่เอง":
             next_admit_date = st.date_input(
                 "วันที่ admit รอบถัดไป",
-                 value=dc_date + timedelta(days=21),
+                value=dc_date + timedelta(days=21),
                 key=f"next_date_direct_{pid}",
             )
         else:
-             weeks_from_now = st.number_input(
+            weeks_from_now = st.number_input(
                 "อีกกี่สัปดาห์จากวัน D/C",
-                 min_value=1,
+                min_value=1,
                 max_value=52,
                 value=3,
                 step=1,
