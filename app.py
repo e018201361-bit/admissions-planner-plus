@@ -1630,24 +1630,30 @@ with T_Discharge:
             )
             st.rerun()
     else:
-    st.write(f"วันที่ admit รอบถัดไป: **{next_admit_date}**")
+        st.write(f"วันที่ admit รอบถัดไป: **{next_admit_date}**")
 
-    if st.button(
-        "บันทึก D/C และสร้างแผน admit รอบถัดไป",
-        key=f"btn_dc_next_{pid}",
-    ):
-        if not next_admit_date:
-            st.error("ยังไม่ได้กำหนดวันที่ admit รอบถัดไป")
-        else:
-            extra_note = (
-                f"[D/C {dc_date.isoformat()}] Planned readmit on "
-                f"{next_admit_date.isoformat()}\n"
+        if st.button(
+            "บันทึก D/C และสร้างแผน admit รอบถัดไป",
+            key=f"btn_dc_next_{pid}",
+        ):
+            if not next_admit_date:
+                st.error("ยังไม่ได้กำหนดวันที่ admit รอบถัดไป")
+            else:
+                extra_note = (
+                    f"[D/C {dc_date.isoformat()}] Planned readmit on "
+                    f"{next_admit_date.isoformat()}\n"
+                )
+                execute(
+                    """
+                    UPDATE patients SET status='Planned',
+                    notes = COALESCE(notes,'') || ?
+                    WHERE id=?
+                """,
+                (extra_note, pid),
             )
-            execute(
-                """
-                UPDATE patients SET status='Planned',
-                notes = COALESCE(notes,'') || ?
-                WHERE id=?
+            st.success("บันทึกแผน admit รอบถัดไปเรียบร้อย")
+            st.rerun()
+
                 """,
                 (extra_note, pid),
             )
