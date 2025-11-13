@@ -367,10 +367,22 @@ def sidebar_backup():
 
 def page_dashboard():
     st.header("Dashboard (อย่างง่าย)")
-    df = fetch_df("SELECT status, COUNT(*) as n FROM patients GROUP BY status")
+
+    df = fetch_df("""
+        SELECT
+            COALESCE(h.name, '-') AS hospital,
+            p.status,
+            COUNT(*) AS n
+        FROM patients p
+        LEFT JOIN hospitals h ON p.hospital_id = h.id
+        GROUP BY hospital, p.status
+        ORDER BY hospital, p.status
+    """)
+
     if df.empty:
         st.info("ยังไม่มีข้อมูลผู้ป่วย")
         return
+
     st.dataframe(df, use_container_width=True)
 
 
