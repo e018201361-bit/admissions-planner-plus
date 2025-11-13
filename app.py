@@ -1404,27 +1404,27 @@ with TabPatient:
 
             # ---------- กรณีไม่มี template (โหมด manual) ----------
             else:
-    st.info(
-        "regimen นี้ไม่มี template — ใช้โหมด manual: ใส่ชื่อยาและ dose mg เอง "
-        "(ระบบจะจำค่าไว้เป็นฐานสำหรับ cycle ถัดไป)"
-    )
+                st.info(
+                    "regimen นี้ไม่มี template — ใช้โหมด manual: ใส่ชื่อยาและ dose mg เอง "
+                    "(ระบบจะจำค่าไว้เป็นฐานสำหรับ cycle ถัดไป)"
+                )
 
-    prev_list = list(prev_df.itertuples(index=False))
-    default_rows = max(1, len(prev_list))
+                prev_list = list(prev_df.itertuples(index=False))
+                default_rows = max(1, len(prev_list))
 
-    num_rows = st.number_input(
-        "จำนวนยาที่ต้องกรอกใน regimen นี้",
-        min_value=1,
-        max_value=10,
-        value=default_rows,
-        step=1,
-        key=f"manual_num_rows_{pid}_{cycle_no}",
-    )
+                num_rows = st.number_input(
+                    "จำนวนยาที่ต้องกรอกใน regimen นี้",
+                    min_value=1,
+                    max_value=10,
+                    value=default_rows,
+                    step=1,
+                    key=f"manual_num_rows_{pid}_{cycle_no}",
+                )
 
-    for i in range(num_rows):
-        if i < len(prev_list):
-            default_name = prev_list[i].drug_name or ""
-            default_dose = float(prev_list[i].dose_mg or 0.0)
+                for i in range(num_rows):
+                    if i < len(prev_list):
+                        default_name = prev_list[i].drug_name or ""
+                        default_dose = float(prev_list[i].dose_mg or 0.0)
         else:
             default_name = ""
             default_dose = 0.0
