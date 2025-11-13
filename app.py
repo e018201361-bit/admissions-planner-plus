@@ -297,15 +297,15 @@ def page_add_patient():
 
             if not wards.empty:
                 # key ผูกกับ hospital_id เพื่อให้รีเซ็ตตอนเปลี่ยน รพ.
-        ward_key = f"ward_for_{hospital_id or 'none'}"
+                ward_key = f"ward_for_{hospital_id or 'none'}"
         
                 ward_name = st.selectbox(
-            "วอร์ด",
-            [""] + wards["name"].tolist(),
-            key=ward_key,
-        )
-        if ward_name:
-            ward_id = int(wards.set_index("name").loc[ward_name, "id"])
+                    "วอร์ด",
+                    [""] + wards["name"].tolist(),
+                    key=ward_key,
+                )
+                if ward_name:
+                    ward_id = int(wards.set_index("name").loc[ward_name, "id"])
                 else:
                     ward_id = None
             else:
