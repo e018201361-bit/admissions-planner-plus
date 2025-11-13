@@ -179,11 +179,23 @@ def init_db():
     conn.close()
 
 
-def fetch_df(sql: str, params: tuple = ()) -> pd.DataFrame:
+from typing import Any   # ถ้ายังไม่มี import นี้ อยู่บน ๆ ไฟล์เพิ่มบรรทัดนี้ด้วย
+
+def fetch_df(sql: str, params: Any = None) -> pd.DataFrame:
+    """
+    อ่านข้อมูลจาก SQLite แบบกันตาย:
+    - ถ้าฐานข้อมูลยังไม่มี table / column หรือโครงสร้างไม่ตรง -> คืน DataFrame ว่าง
+    - โชว์ warning บนหน้าเว็บ แต่ไม่ทำให้แอปล่ม
+    """
     conn = get_conn()
-    df = pd.read_sql_query(sql, conn, params=params)
-    conn.close()
-    return df
+    try:
+        df = pd.read_sql_query(sql, conn, params=params)
+        return df
+    except Exception as e:
+        st.warning(f"⚠️ Database error (fetch_df): {e}")
+        return pd.DataFrame()
+    finally:
+        conn.close()
 
 
 def execute(sql: str, params: tuple = ()) -> None:
