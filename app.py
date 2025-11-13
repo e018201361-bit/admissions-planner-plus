@@ -515,6 +515,53 @@ def page_patient_detail():
     )
     st.markdown(f"**DX:** {data.get('diagnosis') or '-'} | **แพทย์:** {data.get('responsible_md') or '-'}")
 
+# ===== ย้ายวอร์ด / เปลี่ยนเตียง =====
+with st.expander("ย้ายวอร์ด / เปลี่ยนเตียง"):
+    pid = int(data["id"])
+    hosp_id = data["hospital_id"]
+    current_ward_id = data.get("ward_id")
+
+    wards = fetch_df(
+        """
+        SELECT id, name
+        FROM wards
+        WHERE hospital_id = ?
+        ORDER BY name
+        """,
+        (hosp_id,),
+    )
+
+    if wards.empty:
+        st.info("รพ.นี้ยังไม่มีข้อมูลวอร์ดในฐานข้อมูล")
+    else:
+        ward_map = {row["name"]: row["id"] for _, row in wards.iterrows()}
+        ward_names = list(ward_map.keys())
+
+        # default index
+        default_index = 0
+        if current_ward_id:
+            try:
+                current_name = wards.set_index("id").loc[current_ward_id, "name"]
+                default_index = ward_names.index(current_name)
+            except:
+                pass
+
+        new_ward_name = st.selectbox("วอร์ดใหม่", ward_names, index=default_index)
+        new_bed = st.text_input("เตียงใหม่", value=data.get("bed") or "")
+
+        if st.button("บันทึกการย้ายวอร์ด / เตียง", key=f"btn_move_ward_{pid}"):
+            new_ward_id = int(ward_map[new_ward_name])
+            execute(
+                """
+                UPDATE patients
+                SET ward_id = ?, bed = ?
+                WHERE id = ?
+                """,
+                (new_ward_id, new_bed or None, pid),
+            )
+            st.success("บันทึกการย้ายวอร์ด / เตียงเรียบร้อยแล้ว")
+            st.rerun()
+
     tabs = st.tabs(["Rounds notes", "Chemo", "D/C & Next plan"])
     with tabs[0]:
         show_rounds_tab(pid)
