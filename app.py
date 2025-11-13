@@ -1244,20 +1244,36 @@ with TabPatient:
 
             c5, c6, c7 = st.columns(3)
             with c5:
+                # เพิ่มตัวเลือก "<พิมพ์ชื่อเอง>" ไว้บนสุด
                 choices = ["<พิมพ์ชื่อเอง>"] + tmpl_names
+
+                # regimen ปัจจุบันใน DB (ถ้ามี)
                 current_reg = data.get("chemo_regimen") or ""
+
+                # เลือก default index ให้เหมาะ
                 if current_reg in tmpl_names:
                     default_index = choices.index(current_reg)
                 elif current_reg:
-                    default_index = 0
+                    default_index = 0        # เคยพิมพ์เอง → ไปที่ "<พิมพ์ชื่อเอง>"
                 else:
-                    default_index = 0
+                    default_index = 0        # ยังไม่เคยตั้ง → "<พิมพ์ชื่อเอง>"
 
                 choice = st.selectbox(
                     "เลือก regimen",
                     choices,
                     index=default_index,
                 )
+
+                # ถ้าเลือกพิมพ์เอง ให้มีช่องให้พิมพ์ชื่อสูตร
+                if choice == "<พิมพ์ชื่อเอง>":
+                    regimen_name = st.text_input(
+                        "พิมพ์ชื่อ regimen เอง",
+                        value=current_reg,
+                        placeholder="เช่น ICE-GD, FLAG-IDA, BEAM ฯลฯ",
+                    )
+                else:
+                    regimen_name = choice
+
 
                 if choice == "<พิมพ์ชื่อเอง>":
                     regimen_name = st.text_input(
