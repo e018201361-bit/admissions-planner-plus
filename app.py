@@ -343,7 +343,7 @@ def page_plan_admit():
                     (date.today().isoformat(), int(row["id"])),
                 )
                 st.success("อัปเดตเป็น Admitted แล้ว")
-                st.experimental_rerun()
+                st.rerun()
 
 
 def sidebar_backup():
@@ -447,7 +447,7 @@ def show_rounds_tab(pid: int):
                 (now, pid),
             )
             st.success("บันทึก round แล้ว")
-            st.experimental_rerun()
+            st.rerun()
 
 
 def show_chemo_tab(pid: int, data: dict):
@@ -554,7 +554,7 @@ def show_chemo_tab(pid: int, data: dict):
         else:
             add_chemo_from_df(pid, manual_df, int(cycle_no), given_date, reg_for_cycle or regimen_name or "")
             st.success("บันทึก chemo cycle นี้เรียบร้อย (dose แต่ละตัวจะใช้เป็นฐานสำหรับ cycle ถัดไป)")
-            st.experimental_rerun()
+            st.rerun()
 
 
 def show_dc_tab(pid: int, data: dict):
@@ -593,7 +593,7 @@ def show_dc_tab(pid: int, data: dict):
                 (extra_note, pid),
             )
             st.success("บันทึก D/C และแผน F/U OPD แล้ว (เคสนี้จะไม่อยู่ในรายชื่อที่ต้อง round อีก)")
-            st.experimental_rerun()
+            st.rerun()
     else:
         if st.button("บันทึก D/C และสร้างแผน admit รอบถัดไป", key=f"btn_dc_next_{pid}"):
             if not next_admit_date:
@@ -637,7 +637,7 @@ def show_dc_tab(pid: int, data: dict):
                     (next_admit_date.isoformat(), pid),
                 )
                 st.success("บันทึก D/C และสร้างรายการ Planned admit รอบถัดไปแล้ว")
-                st.experimental_rerun()
+                st.rerun()
 
 
 def page_settings():
