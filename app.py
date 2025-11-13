@@ -1315,6 +1315,7 @@ if len(chemo_df):
     max_cycle = int(chemo_df["Cycle"].max())
 else:
     max_cycle = 0
+    
 next_cycle = max_cycle + 1
 
 c8, c9, c10 = st.columns(3)
@@ -1348,7 +1349,7 @@ rows = []
 if regimen_name:
     rows, _ = compute_doses_for_template(regimen_name, weight_kg, height_cm)
 
-# ข้อมูล cycle ก่อนหน้า (ถ้ามี) ใช้เป็น default
+# ข้อมูล cycle ก่อนหน้า (ถ้ามี) ใช้เป็น default สำหรับทั้ง template และ manual
 prev_cycle_no = int(cycle_no) - 1
 prev_df = pd.DataFrame()
 if prev_cycle_no >= 1:
@@ -1490,7 +1491,6 @@ if st.button("บันทึก chemo cycle นี้ (ใช้ dose ตาม
             "(dose แต่ละตัวจะใช้เป็นฐานสำหรับ cycle ถัดไป)"
         )
         st.rerun()
-
 
 
             st.markdown("---")
