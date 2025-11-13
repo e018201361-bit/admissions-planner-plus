@@ -1629,7 +1629,7 @@ with T_Discharge:
                 "บันทึก D/C และแผน F/U OPD แล้ว (เคสนี้จะไม่อยู่ในรายชื่อที่ต้อง round อีก)"
             )
             st.rerun()
-        else:
+    else:
     st.write(f"วันที่ admit รอบถัดไป: **{next_admit_date}**")
 
     if st.button(
