@@ -1560,16 +1560,16 @@ with st.form("add_assess_form", clear_on_submit=True):
         mime="text/csv",
     )
 
-        # ----- Discharge / Next plan -----
-        with T_Discharge:
-        st.markdown("### วางแผนจำหน่ายผู้ป่วย (D/C) และรอบถัดไป")
-        st.info(f"สถานะปัจจุบัน: **{data.get('status','-')}**")
+# ----- Discharge / Next plan -----
+with T_Discharge:
+st.markdown("### วางแผนจำหน่ายผู้ป่วย (D/C) และรอบถัดไป")
+st.info(f"สถานะปัจจุบัน: **{data.get('status','-')}**")
 
-            dc_date = st.date_input(
-                "วันที่ D/C",
-                value=date.today(),
-                key=f"dc_date_{pid}",
-            )
+    dc_date = st.date_input(
+        "วันที่ D/C",
+        value=date.today(),
+        key=f"dc_date_{pid}",
+    )
 
             plan_type = st.radio(
                 "แผนต่อไปหลัง D/C",
