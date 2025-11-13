@@ -1512,10 +1512,10 @@ with st.form("add_assess_form", clear_on_submit=True):
             step=1,
         )
 
-                with c12:
-                    assess_date = st.date_input("วันที่ตรวจ", value=date.today())
-                with c13:
-                    assess_type = st.text_input("ชนิดการตรวจ (CT, PET/CT, BM ฯลฯ)")
+     with c12:
+        assess_date = st.date_input("วันที่ตรวจ", value=date.today())
+     with c13:
+         assess_type = st.text_input("ชนิดการตรวจ (CT, PET/CT, BM ฯลฯ)")
                 response = st.text_input("Response (CR/PR/SD/PD ฯลฯ)")
                 result_summary = st.text_area("สรุปผลตรวจ")
                 submitted_assess = st.form_submit_button("บันทึกผลการประเมิน")
