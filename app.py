@@ -321,14 +321,14 @@ def page_plan_admit():
     st.header("แผน Admit")
     df = fetch_df(
         """
-        SELECT p.id, patient_name, mrn,
-               planned_admit_date, hospital_id, ward_id, status,
+        SELECT p.id, p.patient_name, p.mrn,
+               p.planned_admit_date, p.hospital_id, p.ward_id, p.status,
                h.name AS hospital, w.name AS ward
         FROM patients p
         LEFT JOIN hospitals h ON p.hospital_id=h.id
         LEFT JOIN wards w ON p.ward_id=w.id
-        WHERE status='Planned'
-        ORDER BY planned_admit_date, patient_name
+        WHERE p.status='Planned'
+        ORDER BY p.planned_admit_date, p.patient_name
         """
     )
     if df.empty:
