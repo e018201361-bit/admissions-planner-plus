@@ -615,21 +615,85 @@ def show_chemo_tab(pid: int, data: dict):
         st.success("บันทึกแล้ว")
 
     st.markdown("### แผน Regimen สำหรับผู้ป่วยรายนี้")
+
+    # เลือก / ระบุชื่อ regimen
     regimen_options = ["<พิมพ์ชื่อเอง>"] + sorted(CHEMO_TEMPLATES.keys())
-    regimen_sel = st.selectbox("เลือก regimen", regimen_options)
+    regimen_sel = st.selectbox(
+        "เลือก regimen",
+        regimen_options,
+        key=f"regimen_sel_{pid}",
+    )
+
     if regimen_sel == "<พิมพ์ชื่อเอง>":
-        regimen_name = st.text_input("พิมพ์ชื่อ regimen เอง", key="regimen_manual")
+        regimen_name = st.text_input(
+            "พิมพ์ชื่อ regimen เอง",
+            value=data.get("chemo_regimen") or "",
+            key=f"regimen_manual_{pid}",
+        )
     else:
         regimen_name = regimen_sel
 
-    total_cycles = st.number_input("จำนวน cycle ทั้งหมดที่วางแผน", min_value=1, max_value=40, value=int(data.get("chemo_total_cycles") or 6))
-    interval_days = st.number_input("ช่วงห่างระหว่าง cycle (วัน)", min_value=1, max_value=365, value=int(data.get("chemo_interval_days") or 21))
-    if st.button("บันทึกแผน Chemo สำหรับคนไข้รายนี้", key="btn_save_chemo_plan"):
-        execute(
-            "UPDATE patients SET chemo_regimen=?, chemo_total_cycles=?, chemo_interval_days=? WHERE id=?",
-            (regimen_name or None, int(total_cycles), int(interval_days), pid),
+    # ---- ตัวเลือกปรับขนาดยาเป็นเปอร์เซ็นต์จาก standard ----
+    # ดึงค่าเก่าจาก DB ถ้ามี (เช่น 80 = ใช้ 80% ของ standard)
+    default_modifier = float(data.get("chemo_dose_modifier") or 100.0)
+
+    use_modifier = st.checkbox(
+        "ปรับขนาดยาเป็นเปอร์เซ็นต์จาก standard dose",
+        value=(default_modifier != 100.0),
+        key=f"use_modifier_{pid}",
+    )
+
+    if use_modifier:
+        chemo_dose_modifier = st.number_input(
+            "ให้ขนาดยาเป็นกี่ % ของ standard dose",
+            min_value=10.0,
+            max_value=200.0,
+            value=default_modifier,
+            step=5.0,
+            key=f"modifier_input_{pid}",
         )
-        st.success("บันทึกแผน chemo แล้ว")
+    else:
+        # ถ้าไม่ติ๊ก แปลว่าใช้ 100% ตามปกติ
+        chemo_dose_modifier = 100.0
+    # --------------------------------------------------------
+
+    # จำนวน cycle ทั้งหมด + interval
+    total_cycles = st.number_input(
+        "จำนวน cycle ทั้งหมดที่วางแผน",
+        min_value=1,
+        max_value=40,
+        value=int(data.get("chemo_total_cycles") or 1),
+        key=f"total_cycles_{pid}",
+    )
+
+    interval_days = st.number_input(
+        "ช่วงห่างระหว่าง cycle (วัน)",
+        min_value=1,
+        max_value=365,
+        value=int(data.get("chemo_interval_days") or 21),
+        key=f"interval_days_{pid}",
+    )
+
+    if st.button("บันทึกแผน chemo", key=f"save_chemo_plan_{pid}"):
+        execute(
+            """
+            UPDATE patients
+            SET chemo_regimen = ?,
+                chemo_total_cycles = ?,
+                chemo_interval_days = ?,
+                chemo_dose_modifier = ?
+            WHERE id = ?
+            """,
+            (
+                regimen_name or None,
+                int(total_cycles),
+                int(interval_days),
+                float(chemo_dose_modifier),
+                pid,
+            ),
+        )
+        st.success("บันทึกแผน chemo เรียบร้อยแล้ว")
+        st.rerun()
 
     st.markdown("### ประวัติการให้ Chemo")
     chemo_df = get_chemo_courses(pid)
