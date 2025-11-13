@@ -1571,11 +1571,11 @@ with T_Discharge:
         key=f"dc_date_{pid}",
     )
 
-            plan_type = st.radio(
-                "แผนต่อไปหลัง D/C",
-                ["F/U OPD", "นัด admit รอบถัดไป"],
-                key=f"plan_type_{pid}",
-            )
+    plan_type = st.radio(
+         "แผนต่อไปหลัง D/C",
+        ["F/U OPD", "นัด admit รอบถัดไป"],
+        key=f"plan_type_{pid}",
+    )
 
             next_admit_date = None
             plan_opd_text = ""
