@@ -1548,7 +1548,6 @@ with st.form("add_assess_form", clear_on_submit=True):
         st.rerun()
 # ----------------   ตรงนี้คือจุดสิ้นสุดแทน  ----------------
 
-st.markdown("----")
 
 
     st.markdown("---")
