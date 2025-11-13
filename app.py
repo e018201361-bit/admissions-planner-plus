@@ -1493,24 +1493,25 @@ if st.button("บันทึก chemo cycle นี้ (ใช้ dose ตาม
         st.rerun()
 
 
-    st.markdown("---")
-    st.markdown("### การประเมินผล (CT / PET / BM)")
-            assess_df = get_chemo_assessments(pid)
-            if len(assess_df):
-                st.dataframe(assess_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("ยังไม่มีการบันทึกผล CT/PET/BM")
+st.markdown("---")
+st.markdown("### การประเมินผล (CT / PET / BM)")
 
-            with st.form("add_assess_form", clear_on_submit=True):
-                c11, c12, c13 = st.columns(3)
-                with c11:
-                    assess_cycle = st.number_input(
-                        "หลัง cycle ที่",
-                        min_value=0,
-                        max_value=999,
-                        value=0,
-                        step=1,
-                    )
+assess_df = get_chemo_assessments(pid)
+if len(assess_df):
+    st.dataframe(assess_df, use_container_width=True, hide_index=True)
+else:
+    st.info("ยังไม่มีการบันทึกผล CT/PET/BM")
+
+with st.form("add_assess_form", clear_on_submit=True):
+    c11, c12, c13 = st.columns(3)
+    with c11:
+        assess_cycle = st.number_input(
+            "ผลใน cycle ที่",
+            min_value=1,
+            max_value=999,
+            step=1,
+        )
+
                 with c12:
                     assess_date = st.date_input("วันที่ตรวจ", value=date.today())
                 with c13:
