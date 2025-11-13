@@ -1560,149 +1560,140 @@ with st.form("add_assess_form", clear_on_submit=True):
         mime="text/csv",
     )
 
-# ----- Discharge / Next plan -----
-with T_Discharge:
-    st.markdown("### วางแผนจำหน่ายผู้ป่วย (D/C) และรอบถัดไป")
-    st.info(f"สถานะปัจจุบัน: **{data.get('status','-')}**")
+    # ------ Discharge / Next plan ------
+    with T_Discharge:
+        st.markdown("### 🏥 วางแผนจำหน่ายผู้ป่วย (D/C) และรอบถัดไป")
+        st.info(f"สถานะปัจจุบัน: **{data.get('status','-')}**")
 
-    dc_date = st.date_input(
-        "วันที่ D/C",
-        value=date.today(),
-        key=f"dc_date_{pid}",
-    )
-
-    plan_type = st.radio(
-         "แผนต่อไปหลัง D/C",
-        ["F/U OPD", "นัด admit รอบถัดไป"],
-        key=f"plan_type_{pid}",
-    )
-
-    next_admit_date = None
-    plan_opd_text = ""
-    weeks_from_now = 0
-    # ค่าเริ่มต้น
-    next_admit_date = None
-    plan_opd_text = ""
-    weeks_from_now = 0
-
-    # เลือกแผนหลัง D/C
-    if plan_type == "F/U OPD":
-        plan_opd_text = st.text_area(
-            "รายละเอียด F/U OPD (เช่น นัด OPD 3 เดือน, CBC q1m ฯลฯ)",
-            key=f"opd_plan_{pid}",
-        )
-    else:
-        mode = st.radio(
-            "เลือกวิธีคำนวณวันที่ admit รอบถัดไป",
-            ["เลือกวันที่เอง", "ระบุจำนวนสัปดาห์จากวัน D/C"],
-            key=f"next_mode_{pid}",
+        dc_date = st.date_input(
+            "วันที่ D/C",
+            value=date.today(),
+            key=f"dc_date_{pid}",
         )
 
-        if mode == "เลือกวันที่เอง":
-            next_admit_date = st.date_input(
-                "วันที่ admit รอบถัดไป",
-                value=dc_date + timedelta(days=21),
-                key=f"next_date_direct_{pid}",
-            )
-        else:
-            weeks_from_now = st.number_input(
-                "อีกกี่สัปดาห์จากวัน D/C",
-                min_value=1,
-                max_value=52,
-                value=3,
-                step=1,
-                key=f"weeks_from_dc_{pid}",
-            )
-            next_admit_date = dc_date + timedelta(weeks=int(weeks_from_now))
+        plan_type = st.radio(
+            "แผนต่อไปหลัง D/C",
+            ["F/U OPD", "นัด admit รอบถัดไป"],
+            key=f"plan_type_{pid}",
+        )
 
-    st.markdown("---")
-    if plan_type == "F/U OPD":
-        if st.button("บันทึก D/C และแผน F/U OPD", key=f"btn_dc_opd_{pid}"):
-            extra_note = f"[D/C {dc_date.isoformat()}] F/U OPD: {plan_opd_text}\n"
-            execute(
-                "UPDATE patients SET status='Discharged', "
-                "notes = COALESCE(notes,'') || ? "
-                "WHERE id=?",
-                (extra_note, pid),
-            )
-            st.success(
-                "บันทึก D/C และแผน F/U OPD แล้ว (เคสนี้จะไม่อยู่ในรายชื่อที่ต้อง round อีก)"
-            )
-            st.rerun()
-    else:
-        st.write(f"วันที่ admit รอบถัดไป: **{next_admit_date}**")
+        next_admit_date = None
+        plan_opd_text = ""
+        weeks_from_now = 0
 
-        if st.button(
-            "บันทึก D/C และสร้างแผน admit รอบถัดไป",
-            key=f"btn_dc_next_{pid}",
-        ):
-            if not next_admit_date:
-                st.error("ยังไม่ได้กำหนดวันที่ admit รอบถัดไป")
-            else:
-                extra_note = (
-                    f"[D/C {dc_date.isoformat()}] Planned readmit on "
-                    f"{next_admit_date.isoformat()}\n"
-                )
+        # ---------- แผน F/U OPD ----------
+        if plan_type == "F/U OPD":
+            plan_opd_text = st.text_area(
+                "รายละเอียด F/U OPD (เช่น นัด OPD 3 เดือน, CBC q1m ฯลฯ)",
+                key=f"opd_plan_{pid}",
+            )
+
+            if st.button("บันทึก D/C และแผน F/U OPD", key=f"btn_dc_opd_{pid}"):
+                extra_note = f"[D/C {dc_date.isoformat()}] F/U OPD: {plan_opd_text}\n"
                 execute(
                     """
-                    UPDATE patients SET status='Planned',
-                    notes = COALESCE(notes,'') || ?
+                    UPDATE patients SET status='Discharged',
+                        notes = COALESCE(notes,'') || ?
                     WHERE id=?
-                """,
-                (extra_note, pid),
-            )
-            st.success("บันทึกแผน admit รอบถัดไปเรียบร้อย")
-            st.rerun()
-
-                """,
-                (extra_note, pid),
-            )
-            st.success("บันทึกแผน admit รอบถัดไปเรียบร้อย")
-            st.rerun()
-
-                execute(
-                    """
-                    INSERT INTO patients(
-                        patient_name, mrn, age, sex,
-                        hospital_id, ward_id,
-                        status, planned_admit_date, admit_date,
-                        bed, diagnosis, responsible_md,
-                        priority, precautions, notes, last_rounded_at,
-                        weight_kg, height_cm, bsa,
-                        chemo_regimen, chemo_total_cycles, chemo_interval_days
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
-                    (
-                        data.get("patient_name"),
-                        data.get("mrn"),
-                        data.get("age"),
-                        data.get("sex"),
-                        data.get("hospital_id"),
-                        None,  # วอร์ดยังไม่ fix
-                        "Planned",
-                        next_admit_date.isoformat(),
-                        None,
-                        None,
-                        data.get("diagnosis"),
-                        data.get("responsible_md"),
-                        data.get("priority"),
-                        data.get("precautions"),
-                        f"Planned readmit after D/C from admission id {pid}",
-                        None,
-                        data.get("weight_kg"),
-                        data.get("height_cm"),
-                        data.get("bsa"),
-                        data.get("chemo_regimen"),
-                        data.get("chemo_total_cycles"),
-                        data.get("chemo_interval_days"),
-                    ),
+                    (extra_note, pid),
                 )
-
-                st.success(
-                    "บันทึก D/C แล้ว และสร้างรายการ Planned admit รอบถัดไปเรียบร้อย "
-                    "(ไปดูได้ที่หน้า 'แผน Admit')"
-                )
+                st.success("บันทึก D/C และแผน F/U OPD แล้ว (เคสนี้จะไม่อยู่ในรายชื่อที่ต้อง round อีก)")
                 st.rerun()
+
+        # ---------- แผนนัด admit รอบถัดไป ----------
+        else:
+            mode = st.radio(
+                "เลือกรูปแบบกำหนดวันที่ admit รอบถัดไป",
+                ["เลือกวันที่เอง", "ระบุจำนวนสัปดาห์จากวัน D/C"],
+                key=f"next_mode_{pid}",
+            )
+
+            if mode == "เลือกวันที่เอง":
+                next_admit_date = st.date_input(
+                    "วันที่ admit รอบถัดไป",
+                    value=dc_date + timedelta(days=21),
+                    key=f"next_date_direct_{pid}",
+                )
+            else:
+                weeks_from_now = st.number_input(
+                    "อีกกี่สัปดาห์จากวัน D/C",
+                    min_value=1,
+                    max_value=52,
+                    value=3,
+                    step=1,
+                    key=f"weeks_from_dc_{pid}",
+                )
+                next_admit_date = dc_date + timedelta(weeks=int(weeks_from_now))
+
+            st.markdown("---")
+            st.write(f"วันที่ admit รอบถัดไป: **{next_admit_date}**")
+
+            if st.button("บันทึก D/C และสร้างแผน admit รอบถัดไป", key=f"btn_dc_next_{pid}"):
+                if not next_admit_date:
+                    st.error("ยังไม่ได้กำหนดวันที่ admit รอบถัดไป")
+                else:
+                    extra_note = (
+                        f"[D/C {dc_date.isoformat()}] Planned readmit on "
+                        f"{next_admit_date.isoformat()}\n"
+                    )
+
+                    # 1) อัปเดตเคสนี้ให้เป็น Planned (พร้อม note เพิ่ม)
+                    execute(
+                        """
+                        UPDATE patients SET status='Planned',
+                            notes = COALESCE(notes,'') || ?
+                        WHERE id=?
+                        """,
+                        (extra_note, pid),
+                    )
+
+                    # 2) สร้างรายการ planned admit ใหม่สำหรับรอบถัดไป
+                    execute(
+                        """
+                        INSERT INTO patients(
+                            patient_name, mrn, age, sex,
+                            hospital_id, ward_id,
+                            status, planned_admit_date, admit_date,
+                            bed, diagnosis, responsible_md,
+                            priority, precautions, notes, last_rounded_at,
+                            weight_kg, height_cm, bsa,
+                            chemo_regimen, chemo_total_cycles, chemo_interval_days
+                        )
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """,
+                        (
+                            data.get("patient_name"),
+                            data.get("mrn"),
+                            data.get("age"),
+                            data.get("sex"),
+                            data.get("hospital_id"),
+                            None,  # ward ยังไม่ fix
+                            "Planned",
+                            next_admit_date.isoformat(),
+                            None,  # admit_date ยังไม่ทราบ
+                            None,  # bed
+                            data.get("diagnosis"),
+                            data.get("responsible_md"),
+                            data.get("priority"),
+                            data.get("precautions"),
+                            f"Planned readmit after D/C from admission id {pid}",
+                            None,  # last_rounded_at
+                            data.get("weight_kg"),
+                            data.get("height_cm"),
+                            data.get("bsa"),
+                            data.get("chemo_regimen"),
+                            data.get("chemo_total_cycles"),
+                            data.get("chemo_interval_days"),
+                        ),
+                    )
+
+                    st.success(
+                        "บันทึก D/C แล้ว และสร้างรายการ Planned admit รอบถัดไปเรียบร้อย "
+                        "(ไปดูได้ที่หน้า 'แผน Admit')"
+                    )
+                    st.rerun()
+
 
 
 # ---------------- Sidebar: backup/restore ----------------
