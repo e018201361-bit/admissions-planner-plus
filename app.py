@@ -265,6 +265,18 @@ def export_chemo_csv(pid: int, patient_name: str) -> bytes:
 def page_add_patient():
     st.header("เพิ่มผู้ป่วย (เคสที่ admit อยู่แล้ว)")
 
+    # -------- เลือกรพ.ก่อน (นอกฟอร์ม) --------
+    hospitals = fetch_df("SELECT id, name FROM hospitals ORDER BY name")
+    hosp_map = {row["name"]: row["id"] for _, row in hospitals.iterrows()} if not hospitals.empty else {}
+    hosp_name = st.selectbox("โรงพยาบาล *", list(hosp_map.keys()) or [""])
+    hospital_id = hosp_map.get(hosp_name)
+
+    wards = fetch_df(
+        "SELECT id, name FROM wards WHERE hospital_id=? ORDER BY name",
+        (hospital_id,),
+    ) if hospital_id else pd.DataFrame()
+
+
     with st.form("add_patient_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
 
