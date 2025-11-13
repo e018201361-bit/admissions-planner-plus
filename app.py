@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 import pandas as pd
 import streamlit as st
 
-DB_PATH = "admit_planner.db"
+DB_PATH = "admissions_planner_plus_v2.db"
 
 CHEMO_TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
     "CHOP": [
