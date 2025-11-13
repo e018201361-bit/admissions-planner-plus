@@ -296,9 +296,16 @@ def page_add_patient():
             ) if hospital_id else pd.DataFrame()
 
             if not wards.empty:
-                ward_name = st.selectbox("วอร์ด", [""] + wards["name"].tolist())
-                if ward_name:
-                    ward_id = int(wards.set_index("name").loc[ward_name, "id"])
+                # key ผูกกับ hospital_id เพื่อให้รีเซ็ตตอนเปลี่ยน รพ.
+        ward_key = f"ward_for_{hospital_id or 'none'}"
+        
+                ward_name = st.selectbox(
+            "วอร์ด",
+            [""] + wards["name"].tolist(),
+            key=ward_key,
+        )
+        if ward_name:
+            ward_id = int(wards.set_index("name").loc[ward_name, "id"])
                 else:
                     ward_id = None
             else:
