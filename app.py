@@ -263,58 +263,93 @@ def export_chemo_csv(pid: int, patient_name: str) -> bytes:
 
 
 def page_add_patient():
-    st.header("เพิ่มผู้ป่วย")
+    st.header("เพิ่มผู้ป่วย (เคสที่ admit อยู่แล้ว)")
+
     with st.form("add_patient_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
+
         with col1:
             name = st.text_input("ชื่อผู้ป่วย *")
             mrn = st.text_input("HN/MRN")
             age = st.number_input("อายุ", min_value=0, max_value=120, value=60)
             sex = st.selectbox("เพศ", ["", "M", "F"])
+
         with col2:
             hospitals = fetch_df("SELECT id, name FROM hospitals ORDER BY name")
             hosp_map = {row["name"]: row["id"] for _, row in hospitals.iterrows()}
             hosp_name = st.selectbox("โรงพยาบาล *", list(hosp_map.keys()) or [""])
             hospital_id = hosp_map.get(hosp_name)
 
-            wards = fetch_df("SELECT id, name FROM wards WHERE hospital_id=? ORDER BY name", (hospital_id,)) if hospital_id else pd.DataFrame()
-            ward_name = st.selectbox("วอร์ด", [""] + wards["name"].tolist()) if not wards.empty else st.selectbox("วอร์ด", [""])
-            ward_id = None
-            if not wards.empty and ward_name:
-                ward_id = int(wards.set_index("name").loc[ward_name, "id"])
+            wards = fetch_df(
+                "SELECT id, name FROM wards WHERE hospital_id=? ORDER BY name",
+                (hospital_id,),
+            ) if hospital_id else pd.DataFrame()
+
+            if not wards.empty:
+                ward_name = st.selectbox("วอร์ด", [""] + wards["name"].tolist())
+                ward_id = None
+                if ward_name:
+                    ward_id = int(wards.set_index("name").loc[ward_name, "id"])
+            else:
+                ward_name = st.selectbox("วอร์ด", [""])
+                ward_id = None
 
             priority = st.selectbox("ลำดับความสำคัญ", ["Low", "Medium", "High"], index=1)
-            precautions = st.selectbox("Infection Precautions", ["None", "Droplet", "Airborne", "Contact"], index=0)
+            precautions = st.selectbox(
+                "Infection Precautions",
+                ["None", "Droplet", "Airborne", "Contact"],
+                index=0,
+            )
 
         bed = st.text_input("เตียง (ถ้ามี)")
-        planned_date = st.date_input("Planned Admit Date", value=date.today())
+
+        # 🔹 ใช้ Admit date แทนการโชว์ Planned admit date
+        admit_date = st.date_input(
+            "Admit date (วันที่เริ่มนอน รพ.)",
+            value=date.today(),
+        )
+
         diagnosis = st.text_area("Diagnosis")
         responsible_md = st.text_input("Responsible MD")
         notes = st.text_area("Notes")
+
         submitted = st.form_submit_button("บันทึก")
+
         if submitted:
             if not name or not hospital_id:
                 st.error("กรุณากรอกชื่อผู้ป่วยและเลือกโรงพยาบาล")
             else:
+                # planned_admit_date = None (ไม่ใช้ในฟอร์มนี้)
                 execute(
                     """
                     INSERT INTO patients(
                         patient_name, mrn, age, sex,
                         hospital_id, ward_id,
-                        status, planned_admit_date, bed,
+                        status, planned_admit_date, admit_date, bed,
                         diagnosis, responsible_md,
                         priority, precautions, notes
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
-                        name, mrn or None, int(age) if age else None, sex or None,
-                        hospital_id, ward_id,
-                        "Planned", planned_date.isoformat(), bed or None,
-                        diagnosis or None, responsible_md or None,
-                        priority, precautions, notes or None,
+                        name,
+                        mrn or None,
+                        int(age) if age else None,
+                        sex or None,
+                        hospital_id,
+                        ward_id,
+                        "Admitted",                     # 👈 เคสนี้คือ admit อยู่แล้ว
+                        None,                           # planned_admit_date ยังว่าง
+                        admit_date.isoformat(),         # วันที่นอนจริง
+                        bed or None,
+                        diagnosis or None,
+                        responsible_md or None,
+                        priority,
+                        precautions,
+                        notes or None,
                     ),
                 )
-                st.success("บันทึกผู้ป่วยเรียบร้อยแล้ว")
+                st.success("บันทึกผู้ป่วย (Admitted) เรียบร้อยแล้ว")
+                st.rerun()
 
 
 def page_plan_admit():
