@@ -1493,8 +1493,8 @@ if st.button("บันทึก chemo cycle นี้ (ใช้ dose ตาม
         st.rerun()
 
 
-            st.markdown("---")
-            st.markdown("### การประเมินผล (CT / PET / BM)")
+    st.markdown("---")
+    st.markdown("### การประเมินผล (CT / PET / BM)")
             assess_df = get_chemo_assessments(pid)
             if len(assess_df):
                 st.dataframe(assess_df, use_container_width=True, hide_index=True)
