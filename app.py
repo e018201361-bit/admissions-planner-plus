@@ -1,8 +1,8 @@
-# app.py — Admissions Planner PLUS (Chemo FULL version)
+# app.py — Admissions Planner PLUS (Chemo FULL Version)
 # - Admissions planner as before
 # - Hospital/ward add + delete (safe if no patients)
 # - Patient details, rounds, photos, transfers
-# - Chemo module per patient (regimen templates, BSA, cycle logging, CSV export)
+# - NEW: Chemo module per patient (regimen templates, BSA, cycle logging, CSV export)
 
 import os
 import sqlite3
@@ -207,7 +207,7 @@ def seed_chemo_templates(c):
             {"drug": "Vincristine", "mode": "per_m2", "dose_per_m2": 1.4, "max_mg": 2.0},
             {"drug": "Prednisolone", "mode": "fixed", "fixed_dose_mg": 100.0},
         ],
-        # ICE (approx per_m2 for Carboplatin)
+        # ICE (simplified; Carboplatin here as approximate per_m2)
         "ICE": [
             {"drug": "Ifosfamide", "mode": "per_m2", "dose_per_m2": 5000.0},
             {"drug": "Carboplatin", "mode": "per_m2", "dose_per_m2": 400.0},
@@ -236,7 +236,7 @@ def seed_chemo_templates(c):
             {"drug": "Cyclophosphamide", "mode": "per_m2", "dose_per_m2": 750.0},
             {"drug": "Rituximab", "mode": "per_kg", "dose_per_kg": 375.0},
         ],
-        # HyperCVAD (block A simplified)
+        # HyperCVAD (simplified block A only)
         "HyperCVAD": [
             {"drug": "Cyclophosphamide", "mode": "per_m2", "dose_per_m2": 300.0},
             {"drug": "Vincristine", "mode": "per_m2", "dose_per_m2": 1.4, "max_mg": 2.0},
@@ -374,6 +374,21 @@ def get_patients(filters=None):
 def get_patient_by_id(pid: int):
     df = fetch_df("SELECT * FROM patients WHERE id=?", (pid,))
     return df.iloc[0].to_dict() if len(df) else None
+
+
+# ---------------- Notifications ----------------
+
+def notify_line(token: str, message: str) -> bool:
+    try:
+        resp = requests.post(
+            "https://notify-api.line.me/api/notify",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"message": message},
+            timeout=10,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
 
 
 # ---------------- Chemo helpers ----------------
@@ -830,7 +845,7 @@ with TabPatient:
         )
         hosp_name = fetch_df("SELECT name FROM hospitals WHERE id=?", (data["hospital_id"],)).squeeze()
         ward_name = (
-            fetch_df("SELECT name FROM wards WHERE id=?", (data["ward_id"],)).squeeze()
+            fetch_df("SELECT name FROM wards WHERE id=?", (data.get("ward_id"),)).squeeze()
             if data.get("ward_id")
             else "-"
         )
@@ -922,7 +937,7 @@ with TabPatient:
                 )
                 execute(
                     "INSERT INTO transfers(patient_id, from_hospital_id, from_ward_id, to_hospital_id, to_ward_id, reason) VALUES (?,?,?,?,?,?)",
-                    (pid, data["hospital_id"], data["ward_id"], to_hid, to_wid, reason or None),
+                    (pid, data["hospital_id"], data.get("ward_id"), to_hid, to_wid, reason or None),
                 )
                 execute("UPDATE patients SET hospital_id=?, ward_id=? WHERE id=?", (to_hid, to_wid, pid))
                 st.success("ย้ายเรียบร้อย")
@@ -986,28 +1001,15 @@ with TabPatient:
             c5, c6, c7 = st.columns(3)
             with c5:
                 regimen_default = data.get("chemo_regimen") or (tmpl_names[0] if tmpl_names else "")
-                regimen_name = st.selectbox(
-                    "เลือก regimen",
-                    tmpl_names,
-                    index=(tmpl_names.index(regimen_default) if regimen_default in tmpl_names else 0)
-                    if tmpl_names
-                    else 0,
-                )
+                regimen_index = tmpl_names.index(regimen_default) if regimen_default in tmpl_names else 0
+                regimen_name = st.selectbox("เลือก regimen", tmpl_names, index=regimen_index if tmpl_names else 0)
             with c6:
                 total_cycles = st.number_input(
-                    "จำนวน cycle ทั้งหมดที่วางแผน",
-                    min_value=0,
-                    max_value=100,
-                    value=int(data.get("chemo_total_cycles") or 0),
-                    step=1,
+                    "จำนวน cycle ทั้งหมดที่วางแผน", min_value=0, max_value=100, value=int(data.get("chemo_total_cycles") or 0), step=1
                 )
             with c7:
                 interval_days = st.number_input(
-                    "ช่วงห่างระหว่าง cycle (วัน)",
-                    min_value=0,
-                    max_value=60,
-                    value=int(data.get("chemo_interval_days") or 21),
-                    step=1,
+                    "ช่วงห่างระหว่าง cycle (วัน)", min_value=0, max_value=60, value=int(data.get("chemo_interval_days") or 21), step=1
                 )
 
             if st.button("บันทึกแผน Chemo สำหรับคนไข้รายนี้"):
@@ -1040,13 +1042,7 @@ with TabPatient:
             with c9:
                 given_date = st.date_input("วันที่ให้ยา", value=date.today())
             with c10:
-                dose_factor = st.slider(
-                    "ปรับ % dose (เช่น 0.75 = 75%)",
-                    min_value=0.25,
-                    max_value=1.5,
-                    value=1.0,
-                    step=0.05,
-                )
+                dose_factor = st.slider("ปรับ % dose (เช่น 0.75 = 75%)", min_value=0.25, max_value=1.5, value=1.0, step=0.05)
 
             if st.button("คำนวณ dose และบันทึก cycle นี้"):
                 if not regimen_name:
@@ -1058,6 +1054,7 @@ with TabPatient:
                     if not rows:
                         st.error("ไม่พบ template สำหรับ regimen นี้")
                     else:
+                        # insert each drug row
                         for row in rows:
                             base_dose = row["dose_mg"]
                             final_dose = base_dose * dose_factor if base_dose is not None else None
