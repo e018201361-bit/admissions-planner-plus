@@ -366,7 +366,7 @@ def sidebar_backup():
 
 
 def page_dashboard():
-    st.header("Dashboard (อย่างง่าย)")
+    st.header("Dashboard")
 
     df = fetch_df("""
         SELECT
@@ -383,7 +383,13 @@ def page_dashboard():
         st.info("ยังไม่มีข้อมูลผู้ป่วย")
         return
 
+    # ตารางแรก: รายการตาม status
     st.dataframe(df, use_container_width=True)
+
+    # ตารางสอง: pivot ต่อ รพ.
+    st.subheader("สรุปตามโรงพยาบาล (Pivot)")
+    pivot = df.pivot(index="hospital", columns="status", values="n").fillna(0).astype(int)
+    st.dataframe(pivot, use_container_width=True)
 
 
 def patient_selector() -> int:
