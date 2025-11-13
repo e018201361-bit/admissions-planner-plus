@@ -427,29 +427,44 @@ def sidebar_backup():
 def page_dashboard():
     st.header("Dashboard")
 
-    df = fetch_df("""
+    # ---------- ตารางบน: รายชื่อผู้ป่วยแบบละเอียด ----------
+    df_detail = fetch_df("""
         SELECT
             COALESCE(h.name, '-') AS hospital,
-            p.status,
-            COUNT(*) AS n
+            p.patient_name,
+            COALESCE(w.name, '-') AS ward,
+            p.status
         FROM patients p
         LEFT JOIN hospitals h ON p.hospital_id = h.id
-        GROUP BY hospital, p.status
-        ORDER BY hospital, p.status
+        LEFT JOIN wards w     ON p.ward_id     = w.id
+        ORDER BY hospital, p.patient_name
     """)
 
-    if df.empty:
+    if df_detail.empty:
         st.info("ยังไม่มีข้อมูลผู้ป่วย")
         return
 
-    # ตารางแรก: รายการตาม status
-    st.dataframe(df, use_container_width=True)
+    # ตารางแรก: hospital | patient_name | ward | status  (ไม่มี col n)
+    st.dataframe(df_detail, use_container_width=True)
 
-    # ตารางสอง: pivot ต่อ รพ.
+    # ---------- ตารางล่าง: Pivot สรุปเหมือนเดิม ----------
     st.subheader("สรุปตามโรงพยาบาล (Pivot)")
-    pivot = df.pivot(index="hospital", columns="status", values="n").fillna(0).astype(int)
-    st.dataframe(pivot, use_container_width=True)
 
+    # นับจำนวนจาก df_detail แทนการยิง query ใหม่
+    df_summary = (
+        df_detail
+        .groupby(["hospital", "status"])
+        .size()
+        .reset_index(name="n")
+    )
+
+    pivot = (
+        df_summary
+        .pivot(index="hospital", columns="status", values="n")
+        .fillna(0)
+        .astype(int)
+    )
+    st.dataframe(pivot, use_container_width=True)
 
 def patient_selector() -> int:
     df = fetch_df(
