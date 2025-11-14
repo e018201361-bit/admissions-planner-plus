@@ -1129,31 +1129,39 @@ def page_export_history():
     # แปลง dict ของ patient ให้เป็น DataFrame 1 แถว
     patient_df = pd.DataFrame([data])
 
-    # ----- รวมข้อมูลทุกส่วนเป็นตารางเดียว เพื่อ export เป็น CSV -----
-    export_parts = []
+    # ----- สร้างไฟล์ Excel สวย ๆ แยกเป็นหลายชีต -----
+    buffer = io.BytesIO()
 
-    if not patient_df.empty:
-        info = patient_df.copy()
-        info.insert(0, "section", "patient_info")
-        export_parts.append(info)
+    # ใช้ engine="openpyxl" แทน xlsxwriter (ไม่ต้องติดตั้งเพิ่ม)
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        # Sheet 1: ข้อมูลผู้ป่วย
+        if not patient_df.empty:
+            patient_df.to_excel(
+                writer,
+                sheet_name="01_Patient",
+                index=False,
+            )
 
-    if not chemo_df.empty:
-        df = chemo_df.copy()
-        df.insert(0, "section", "chemo")
-        export_parts.append(df)
+        # Sheet 2: ประวัติ Chemo
+        if not chemo_df.empty:
+            chemo_df.to_excel(
+                writer,
+                sheet_name="02_Chemo",
+                index=False,
+            )
 
-    if export_parts:
-        export_df = pd.concat(export_parts, ignore_index=True)
-        csv_bytes = export_df.to_csv(index=False).encode("utf-8-sig")
+    buffer.seek(0)
 
-        st.download_button(
-            "⬇️ ดาวน์โหลดแฟ้มประวัติการรักษา (CSV)",
-            data=csv_bytes,
-            file_name=f"history_{data['patient_name']}.csv",
-            mime="text/csv",
-        )
-    else:
-        st.info("ยังไม่พบข้อมูลสำหรับ export ของผู้ป่วยรายนี้")
+    # ปุ่มดาวน์โหลดไฟล์ Excel
+    st.download_button(
+        "⬇️ ดาวน์โหลดไฟล์ประวัติการรักษา (Excel)",
+        data=buffer,
+        file_name=f"treatment_history_{data['patient_name']}.xlsx",
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+    )
 
 def page_settings():
     st.header("Settings / Reminders")
