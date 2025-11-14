@@ -280,25 +280,74 @@ def get_chemo_courses(pid: int) -> pd.DataFrame:
     )
 
 
-def add_chemo_from_df(pid: int, df: pd.DataFrame, cycle_no: int, given_date: date, regimen_name: str):
+def add_chemo_from_df(
+    pid: int,
+    df: pd.DataFrame,
+    cycle_no: int,
+    given_date: date,
+    regimen_name: str,
+) -> None:
+    """บันทึก 1 cycle ลง chemo_courses + chemo_drugs (โครงสร้างใหม่)"""
+
     conn = get_conn()
     c = conn.cursor()
-    for _, r in df.iterrows():
-        drug = str(r.get("Drug") or "").strip()
-        if not drug:
-            continue
-        dose_mg = float(r.get("Dose_mg") or 0)
-        dose_factor = float(r.get("Dose_factor") or 1)
-        notes = str(r.get("Notes") or "")
+    try:
+        # -------------------------
+        # 1) เพิ่มหัว cycle ลง chemo_courses
+        # -------------------------
         c.execute(
             """
-            INSERT INTO chemo_courses(patient_id, cycle, date, regimen, drug, dose_mg, dose_factor, notes)
-            VALUES (?,?,?,?,?,?,?,?)
+            INSERT INTO chemo_courses (patient_id, cycle, d1_date, regimen)
+            VALUES (?, ?, ?, ?)
             """,
-            (pid, cycle_no, given_date.isoformat(), regimen_name, drug, dose_mg, dose_factor, notes),
+            (
+                pid,
+                int(cycle_no),
+                given_date.isoformat(),
+                regimen_name or None,
+            ),
         )
-    conn.commit()
-    conn.close()
+        course_id = c.lastrowid   # ใช้เป็น foreign key ให้ chemo_drugs
+
+        # -------------------------
+        # 2) เพิ่มยาแต่ละตัวลง chemo_drugs
+        # -------------------------
+        for _, row in df.iterrows():
+
+            drug = str(row.get("Drug", "")).strip()
+            if not drug:
+                continue
+
+            # dose mg
+            raw_dose = row.get("Dose_mg")
+            try:
+                dose_mg = float(raw_dose) if raw_dose not in ("", None) else None
+            except ValueError:
+                dose_mg = None
+
+            note = str(row.get("Notes", "")).strip() or None
+
+            # ตอนนี้ยังไม่มี Day ในแบบฟอร์ม — ให้ default = D1 ไปก่อน
+            regimen_day = "D1"
+
+            c.execute(
+                """
+                INSERT INTO chemo_drugs (course_id, regimen_day, drug_name, dose_mg, notes)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    course_id,
+                    regimen_day,
+                    drug,
+                    dose_mg,
+                    note,
+                ),
+            )
+
+        conn.commit()
+
+    finally:
+        conn.close()
 
 
 def export_chemo_csv(pid: int, patient_name: str) -> bytes:
