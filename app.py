@@ -239,24 +239,28 @@ def get_patient(pid: int) -> dict:
 
 def get_chemo_courses(pid: int) -> pd.DataFrame:
     """
-    ดึงประวัติให้เคมีบำบัดของผู้ป่วยรายนี้
+    ดึงประวัติเคมีบำบัดของผู้ป่วยรายนี้
     โดย join chemo_courses + chemo_drugs
-    ให้ได้คอลัมน์มาตรฐานที่ใช้โชว์ timeline
+    ให้ได้คอลัมน์มาตรฐานที่ใช้ทำ timeline
     """
     sql = """
         SELECT
-            c.cycle                      AS cycle,
-            c.date                       AS d1_date,      -- วัน D1 ของ cycle
-            c.regimen                    AS regimen,      -- ชื่อ regimen
-            COALESCE(d.regimen_day,'D1') AS day_label,    -- D1 / D8 / Day 15 ฯลฯ
-            d.drug_name                  AS drug,         -- ชื่อยา
-            d.dose_mg                    AS dose_mg,      -- ขนาดยา (mg)
-            d.notes                      AS note          -- note ต่อแต่ละตัว
+            c.cycle                     AS cycle,
+            c.d1_date                   AS d1_date,   -- วัน D1 ของ cycle
+            c.regimen                   AS regimen,   -- ชื่อ regimen
+            COALESCE(d.regimen_day,'D1') AS day_label, -- D1 / D8 / Day 15 ฯลฯ
+            d.drug_name                 AS drug,      -- ชื่อยา
+            d.dose_mg                   AS dose_mg,   -- ขนาดยา (mg)
+            d.notes                     AS note       -- note ต่อแต่ละตัว
         FROM chemo_courses c
         LEFT JOIN chemo_drugs d
-               ON d.course_id = c.id
+            ON d.course_id = c.id
         WHERE c.patient_id = ?
-        ORDER BY c.cycle, c.date, d.regimen_day, d.id
+        ORDER BY
+            c.cycle,
+            c.d1_date,
+            d.regimen_day,
+            d.id
     """
     return fetch_df(sql, (pid,))
     
