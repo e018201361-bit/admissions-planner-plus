@@ -718,7 +718,7 @@ def show_chemo_tab(pid: int, data: dict):
         expanded = (int(cycle) == max_cycle)
 
         with st.expander(header, expanded=expanded):
-        st.dataframe(group[["day_label","drug","dose_mg","note"]])
+            st.dataframe(group[["day_label","drug","dose_mg","note"]])
 
     # ถ้าอยากมีตารางรวมแบบ timeline แบน ๆ ด้านล่างด้วยก็ได้ (option)
     with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
