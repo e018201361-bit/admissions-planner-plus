@@ -597,6 +597,23 @@ def patient_selector() -> int:
     label = st.selectbox("เลือกผู้ป่วย", list(options.keys()))
     return options[label]
 
+# ------------------------ helper: convert hospital/ward id to names ------------------------
+def get_hosp_ward_names(hospital_id: int | None, ward_id: int | None) -> tuple[str, str]:
+    hosp_name = "-"
+    ward_name = "-"
+
+    if hospital_id:
+        df_h = fetch_df("SELECT name FROM hospitals WHERE id=?", (hospital_id,))
+        if not df_h.empty:
+            hosp_name = df_h.loc[0]["name"]
+
+    if ward_id:
+        df_w = fetch_df("SELECT name FROM wards WHERE id=?", (ward_id,))
+        if not df_w.empty:
+            ward_name = df_w.loc[0]["name"]
+
+    return hosp_name, ward_name
+# ------------------------------------------------------------------------------------------
 
 def page_patient_detail():
     st.header("รายละเอียดผู้ป่วย / Rounds / Chemo / D/C")
@@ -612,10 +629,17 @@ def page_patient_detail():
         f"**ชื่อ:** {data['patient_name']}  |  **HN:** {data.get('mrn') or '-'}  "
         f"|  **สถานะ:** {data.get('status') or '-'}"
     )
+    # แปลง hospital_id / ward_id → ชื่อจริง
+    hosp_name, ward_name = get_hosp_ward_names(
+        data.get("hospital_id"),
+        data.get("ward_id"),
+    )
+
     st.markdown(
-        f"**โรงพยาบาล/วอร์ด:** {data.get('hospital_id') or '-'} / {data.get('ward_id') or '-'}  "
+        f"**โรงพยาบาล/วอร์ด:** {hosp_name} / {ward_name} "
         f"| **เตียง:** {data.get('bed') or '-'}"
     )
+    
     st.markdown(f"**DX:** {data.get('diagnosis') or '-'} | **แพทย์:** {data.get('responsible_md') or '-'}")
 
     # ===== ย้ายวอร์ด / เปลี่ยนเตียง =====
