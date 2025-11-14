@@ -665,38 +665,39 @@ def show_chemo_tab(pid: int, data: dict):
         st.success("บันทึกแล้ว")
 
 
-    # ---------------------- ประวัติการให้ยาเคมีบำบัด ----------------------
-    st.markdown("### ยาเคมีบำบัด (ประวัติการให้)")
+    # ------------------ ประวัติการให้ยาเคมีบำบัด ------------------
+st.markdown("### ยาเคมีบำบัด (ประวัติการให้)")
 
-    chemo_df = get_chemo_courses(pid)
+chemo_df = get_chemo_courses(pid)
 
-    # ถ้าไม่มีข้อมูล ให้แสดงข้อความแล้วจบการทำงานเลย
-    if chemo_df.empty:
-        st.info("ยังไม่มีประวัติการให้เคมีบำบัด")
-        return   # <--- สำคัญ: ไม่ให้โค้ดส่วนล่างทำงานต่อ
-
-    # ----- มีข้อมูลแล้ว เริ่มสร้างตารางสำหรับ timeline -----
-
-    df_display = chemo_df.copy()
-
-    # เรียงลำดับ
-    df_display = df_display.sort_values(
+if chemo_df.empty:
+    st.info("ยังไม่มีประวัติการให้เคมีบำบัด")
+else:
+    # เรียงลำดับให้อ่านง่าย
+    chemo_df = chemo_df.sort_values(
         ["cycle", "d1_date", "day_label", "drug"],
-        kind="stable"
+        kind="stable",
     )
 
-    # เลือกเฉพาะคอลัมน์ที่ต้องใช้
+    # ทำตารางหลักสำหรับแสดง + ดาวน์โหลด (ใช้ชื่อคอลัมน์ภาษาอังกฤษไว้ก่อน)
+    df_display = chemo_df.copy()
+
     wanted_cols = [
-        "cycle", "d1_date", "regimen",
-        "day_label", "drug", "dose_mg", "note"
+        "cycle",
+        "d1_date",
+        "regimen",
+        "day_label",
+        "drug",
+        "dose_mg",
+        "note",
     ]
     existing = [c for c in wanted_cols if c in df_display.columns]
     df_display = df_display[existing]
 
-    # เปลี่ยนชื่อ column ให้สวย
+    # เปลี่ยนชื่อ column ให้สวย (เวอร์ชันภาษาอังกฤษ)
     rename_map = {
-        "cycle": "Cycle No",
-        "d1_date": "D1",
+        "cycle": "Cycle",
+        "d1_date": "D1 date",
         "regimen": "Regimen",
         "day_label": "Day",
         "drug": "Drug",
@@ -705,10 +706,7 @@ def show_chemo_tab(pid: int, data: dict):
     }
     df_display = df_display.rename(columns=rename_map)
 
-
-    # ---- จากตรงนี้ลงไปค่อยทำ timeline / accordion ----
-
-    # ทำ timeline แบบ Accordion: 1 accordion ต่อ 1 cycle
+    # -------- timeline แบบ Accordion: 1 accordion ต่อ 1 cycle --------
     max_cycle = int(chemo_df["cycle"].max())
 
     for (cycle, d1, reg), group in chemo_df.groupby(["cycle", "d1_date", "regimen"]):
@@ -718,9 +716,9 @@ def show_chemo_tab(pid: int, data: dict):
         expanded = (int(cycle) == max_cycle)
 
         with st.expander(header, expanded=expanded):
-            st.dataframe(group[["day_label","drug","dose_mg","note"]])
+            st.dataframe(group[["day_label", "drug", "dose_mg", "note"]])
 
-    # ถ้าอยากมีตารางรวมแบบ timeline แบน ๆ ด้านล่างด้วยก็ได้ (option)
+    # timeline รวมทุก cycle (option)
     with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
         timeline = chemo_df[["cycle", "d1_date", "day_label", "drug", "dose_mg", "note"]].copy()
         timeline = timeline.rename(columns={
@@ -732,16 +730,16 @@ def show_chemo_tab(pid: int, data: dict):
             "note": "Notes",
         })
         st.dataframe(timeline, use_container_width=True)
-    
-    # เปลี่ยนชื่อหัวคอลัมน์ให้เป็นภาษาไทย
+
+    # เปลี่ยนชื่อหัวตารางเวอร์ชันภาษาไทยสำหรับตารางดาวน์โหลด
     rename_map = {
-        "cycle": "Cycle",
-        "d1_date": "วันที่ D1",
-        "regimen": "Regimen",
-        "day_label": "Day",
-        "drug": "Drug",
-        "dose_mg": "Dose (mg)",
-        "note": "Note",
+        "Cycle": "Cycle",
+        "D1 date": "วันที่ D1",
+        "Regimen": "Regimen",
+        "Day": "Day",
+        "Drug": "Drug",
+        "Dose (mg)": "Dose (mg)",
+        "Notes": "Note",
     }
     df_display = df_display.rename(columns=rename_map)
 
@@ -750,12 +748,12 @@ def show_chemo_tab(pid: int, data: dict):
     # ปุ่มโหลด CSV เก็บ backup / ส่งออกภายนอก
     csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        "💾 ดาวน์โหลดประวัติยาเคมีบำบัด (CSV)",
+        "📥 ดาวน์โหลดประวัติเคมีบำบัด (CSV)",
         data=csv_bytes,
         file_name=f"chemo_history_{pid}.csv",
     )
-    # -----------------------------------------------------------------
 
+# -----------------------------------------------------------------
     # -------------------------------
     # เพิ่ม cycle ใหม่ (บันทึกยา chemo)
     # -------------------------------
