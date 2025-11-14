@@ -720,40 +720,40 @@ def show_chemo_tab(pid: int, data: dict):
         with st.expander(header, expanded=expanded):
         st.dataframe(group[["day_label","drug","dose_mg","note"]])
 
-        # ถ้าอยากมีตารางรวมแบบ timeline แบน ๆ ด้านล่างด้วยก็ได้ (option)
-        with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
-            timeline = chemo_df[["cycle", "d1_date", "day_label", "drug", "dose_mg", "note"]].copy()
-            timeline = timeline.rename(columns={
-                "cycle": "Cycle",
-                "d1_date": "D1 date",
-                "day_label": "Day",
-                "drug": "Drug",
-                "dose_mg": "Dose (mg)",
-                "note": "Notes",
-            })
-            st.dataframe(timeline, use_container_width=True)
-    
-        # เปลี่ยนชื่อหัวคอลัมน์ให้เป็นภาษาไทย
-        rename_map = {
+    # ถ้าอยากมีตารางรวมแบบ timeline แบน ๆ ด้านล่างด้วยก็ได้ (option)
+    with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
+        timeline = chemo_df[["cycle", "d1_date", "day_label", "drug", "dose_mg", "note"]].copy()
+        timeline = timeline.rename(columns={
             "cycle": "Cycle",
-            "d1_date": "วันที่ D1",
-            "regimen": "Regimen",
+            "d1_date": "D1 date",
             "day_label": "Day",
             "drug": "Drug",
             "dose_mg": "Dose (mg)",
-            "note": "Note",
-        }
-        df_display = df_display.rename(columns=rename_map)
+            "note": "Notes",
+        })
+        st.dataframe(timeline, use_container_width=True)
+    
+    # เปลี่ยนชื่อหัวคอลัมน์ให้เป็นภาษาไทย
+    rename_map = {
+        "cycle": "Cycle",
+        "d1_date": "วันที่ D1",
+        "regimen": "Regimen",
+        "day_label": "Day",
+        "drug": "Drug",
+        "dose_mg": "Dose (mg)",
+        "note": "Note",
+    }
+    df_display = df_display.rename(columns=rename_map)
 
-        st.dataframe(df_display, use_container_width=True)
+    st.dataframe(df_display, use_container_width=True)
 
-        # ปุ่มโหลด CSV เก็บ backup / ส่งออกภายนอก
-        csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "💾 ดาวน์โหลดประวัติยาเคมีบำบัด (CSV)",
-            data=csv_bytes,
-            file_name=f"chemo_history_{pid}.csv",
-        )
+    # ปุ่มโหลด CSV เก็บ backup / ส่งออกภายนอก
+    csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "💾 ดาวน์โหลดประวัติยาเคมีบำบัด (CSV)",
+        data=csv_bytes,
+        file_name=f"chemo_history_{pid}.csv",
+    )
     # -----------------------------------------------------------------
 
     # -------------------------------
