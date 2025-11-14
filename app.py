@@ -1132,9 +1132,8 @@ def page_export_history():
     # ----- สร้างไฟล์ Excel สวย ๆ แยกเป็นหลายชีต -----
     buffer = io.BytesIO()
 
-    # ใช้ engine="openpyxl" แทน xlsxwriter (ไม่ต้องติดตั้งเพิ่ม)
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        # Sheet 1: ข้อมูลผู้ป่วย
+
         if not patient_df.empty:
             patient_df.to_excel(
                 writer,
@@ -1142,7 +1141,6 @@ def page_export_history():
                 index=False,
             )
 
-        # Sheet 2: ประวัติ Chemo
         if not chemo_df.empty:
             chemo_df.to_excel(
                 writer,
@@ -1152,7 +1150,6 @@ def page_export_history():
 
     buffer.seek(0)
 
-    # ปุ่มดาวน์โหลดไฟล์ Excel
     st.download_button(
         "⬇️ ดาวน์โหลดไฟล์ประวัติการรักษา (Excel)",
         data=buffer,
