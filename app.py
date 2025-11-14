@@ -291,67 +291,71 @@ def add_chemo_from_df(
     given_date: date,
     regimen_name: str,
 ) -> None:
-    """บันทึก 1 cycle ลง chemo_courses + chemo_drugs (โครงสร้างใหม่)"""
-
+    """บันทึก chemo 1 cycle
+    - สร้าง 1 แถวใน chemo_courses (ข้อมูลระดับ cycle)
+    - สร้างหลายแถวใน chemo_drugs (รายละเอียดยาแต่ละตัว)
+    """
     conn = get_conn()
     c = conn.cursor()
-    try:
-        # -------------------------
-        # 1) เพิ่มหัว cycle ลง chemo_courses
-        # -------------------------
+
+    # ---------- 1) สร้างแถวใน chemo_courses ----------
+    c.execute(
+        """
+        INSERT INTO chemo_courses(
+            patient_id,
+            cycle,
+            d1_date,
+            regimen_name
+        ) VALUES (?, ?, ?, ?)
+        """,
+        (
+            pid,
+            int(cycle_no),
+            given_date.isoformat(),
+            regimen_name or None,
+        ),
+    )
+    course_id = c.lastrowid  # ใช้เป็น FK ใน chemo_drugs
+
+    # ---------- 2) สร้างแถวใน chemo_drugs จาก df ----------
+    for _, r in df.iterrows():
+        drug = str(r.get("Drug") or "").strip()
+        if not drug:
+            # ถ้าไม่ได้กรอกชื่อยา ข้ามแถวนี้เลย
+            continue
+
+        # ตอนนี้เรายังไม่มี column day ในตาราง editor เลย fix เป็น "D1" ไปก่อน
+        regimen_day = "D1"
+
+        dose_mg = r.get("Dose_mg")
+        try:
+            dose_mg = float(dose_mg) if dose_mg not in (None, "") else None
+        except (TypeError, ValueError):
+            dose_mg = None
+
+        notes = str(r.get("Notes") or "").strip()
+
         c.execute(
             """
-            INSERT INTO chemo_courses (patient_id, cycle, d1_date, regimen)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO chemo_drugs(
+                course_id,
+                regimen_day,
+                drug_name,
+                dose_mg,
+                notes
+            ) VALUES (?, ?, ?, ?, ?)
             """,
             (
-                pid,
-                int(cycle_no),
-                given_date.isoformat(),
-                regimen_name or None,
+                course_id,
+                regimen_day,
+                drug,
+                dose_mg,
+                notes or None,
             ),
         )
-        course_id = c.lastrowid   # ใช้เป็น foreign key ให้ chemo_drugs
 
-        # -------------------------
-        # 2) เพิ่มยาแต่ละตัวลง chemo_drugs
-        # -------------------------
-        for _, row in df.iterrows():
-
-            drug = str(row.get("Drug", "")).strip()
-            if not drug:
-                continue
-
-            # dose mg
-            raw_dose = row.get("Dose_mg")
-            try:
-                dose_mg = float(raw_dose) if raw_dose not in ("", None) else None
-            except ValueError:
-                dose_mg = None
-
-            note = str(row.get("Notes", "")).strip() or None
-
-            # ตอนนี้ยังไม่มี Day ในแบบฟอร์ม — ให้ default = D1 ไปก่อน
-            regimen_day = "D1"
-
-            c.execute(
-                """
-                INSERT INTO chemo_drugs (course_id, regimen_day, drug_name, dose_mg, notes)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    course_id,
-                    regimen_day,
-                    drug,
-                    dose_mg,
-                    note,
-                ),
-            )
-
-        conn.commit()
-
-    finally:
-        conn.close()
+    conn.commit()
+    conn.close()
 
 
 def export_chemo_csv(pid: int, patient_name: str) -> bytes:
