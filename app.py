@@ -223,9 +223,33 @@ def get_patient(pid: int) -> dict:
 
 
 def get_chemo_courses(pid: int) -> pd.DataFrame:
+    # รายชื่อคอลัมน์ที่ระบบต้องการใช้
+    required_cols = [
+        "cycle",
+        "d1_date",
+        "regimen",
+        "day_label",
+        "drug",
+        "dose_mg",
+        "note",
+    ]
+
+    # ตรวจว่าตาราง chemo_cycles มีคอลัมน์อะไรบ้าง
+    table_info = fetch_df("PRAGMA table_info(chemo_cycles)")
+    existing_cols = set(table_info["name"].tolist())
+
+    # เลือกเฉพาะคอลัมน์ที่มีอยู่จริง
+    available = [c for c in required_cols if c in existing_cols]
+
+    col_str = ", ".join(available)
+
     return fetch_df(
-        "SELECT cycle, date, regimen, drug, dose_mg, dose_factor, notes "
-        "FROM chemo_courses WHERE patient_id=? ORDER BY cycle, id",
+        f"""
+        SELECT {col_str}
+        FROM chemo_cycles
+        WHERE patient_id = ?
+        ORDER BY cycle, id
+        """,
         (pid,),
     )
 
@@ -614,159 +638,177 @@ def show_chemo_tab(pid: int, data: dict):
         )
         st.success("บันทึกแล้ว")
 
-    st.markdown("### แผน Regimen สำหรับผู้ป่วยรายนี้")
 
-    # เลือก / ระบุชื่อ regimen
-    regimen_options = ["<พิมพ์ชื่อเอง>"] + sorted(CHEMO_TEMPLATES.keys())
-    regimen_sel = st.selectbox(
-        "เลือก regimen",
-        regimen_options,
-        key=f"regimen_sel_{pid}",
-    )
+    # ---------------------- ประวัติการให้ยาเคมีบำบัด ----------------------
+    st.markdown("### ยาเคมีบำบัด (ประวัติการให้)")
 
-    if regimen_sel == "<พิมพ์ชื่อเอง>":
-        regimen_name = st.text_input(
-            "พิมพ์ชื่อ regimen เอง",
-            value=data.get("chemo_regimen") or "",
-            key=f"regimen_manual_{pid}",
-        )
-    else:
-        regimen_name = regimen_sel
-
-    # ---- ตัวเลือกปรับขนาดยาเป็นเปอร์เซ็นต์จาก standard ----
-    # ดึงค่าเก่าจาก DB ถ้ามี (เช่น 80 = ใช้ 80% ของ standard)
-    default_modifier = float(data.get("chemo_dose_modifier") or 100.0)
-
-    use_modifier = st.checkbox(
-        "ปรับขนาดยาเป็นเปอร์เซ็นต์จาก standard dose",
-        value=(default_modifier != 100.0),
-        key=f"use_modifier_{pid}",
-    )
-
-    if use_modifier:
-        chemo_dose_modifier = st.number_input(
-            "ให้ขนาดยาเป็นกี่ % ของ standard dose",
-            min_value=10.0,
-            max_value=200.0,
-            value=default_modifier,
-            step=5.0,
-            key=f"modifier_input_{pid}",
-        )
-    else:
-        # ถ้าไม่ติ๊ก แปลว่าใช้ 100% ตามปกติ
-        chemo_dose_modifier = 100.0
-    # --------------------------------------------------------
-
-    # จำนวน cycle ทั้งหมด + interval
-    total_cycles = st.number_input(
-        "จำนวน cycle ทั้งหมดที่วางแผน",
-        min_value=1,
-        max_value=40,
-        value=int(data.get("chemo_total_cycles") or 1),
-        key=f"total_cycles_{pid}",
-    )
-
-    interval_days = st.number_input(
-        "ช่วงห่างระหว่าง cycle (วัน)",
-        min_value=1,
-        max_value=365,
-        value=int(data.get("chemo_interval_days") or 21),
-        key=f"interval_days_{pid}",
-    )
-
-    if st.button("บันทึกแผน chemo", key=f"save_chemo_plan_{pid}"):
-        execute(
-            """
-            UPDATE patients
-            SET chemo_regimen = ?,
-                chemo_total_cycles = ?,
-                chemo_interval_days = ?,
-                chemo_dose_modifier = ?
-            WHERE id = ?
-            """,
-            (
-                regimen_name or None,
-                int(total_cycles),
-                int(interval_days),
-                float(chemo_dose_modifier),
-                pid,
-            ),
-        )
-        st.success("บันทึกแผน chemo เรียบร้อยแล้ว")
-        st.rerun()
-
-    st.markdown("### ประวัติการให้ Chemo")
     chemo_df = get_chemo_courses(pid)
-    if chemo_df.empty:
-        st.info("ยังไม่มีประวัติการให้ chemo")
-    else:
-        st.dataframe(chemo_df, use_container_width=True)
-        csv_bytes = export_chemo_csv(pid, data["patient_name"])
-        st.download_button("📥 ดาวน์โหลด Chemo history (CSV)", data=csv_bytes, file_name=f"chemo_history_{data['patient_name'].replace(' ', '_')}.csv", mime="text/csv")
 
-    st.markdown("### เพิ่ม cycle ใหม่ (Hybrid: template + ปรับ dose manual)")
+    if chemo_df.empty:
+        st.info("ยังไม่มีประวัติการให้เคมีบำบัด")
+    else:
+        # ทำสำเนาไว้แต่งหน้าตา
+        df_display = chemo_df.copy()
+
+        # เลือกเฉพาะคอลัมน์ที่มีอยู่จริงและเรียงลำดับให้อ่านง่าย
+        wanted_cols = [
+            "cycle",      # ลำดับ cycle
+            "d1_date",    # วันที่เริ่ม D1 ของ cycle นั้น
+            "regimen",    # ชื่อสูตรยา
+            "day_label",  # D1 / D8 / Day 15 ฯลฯ
+            "drug",       # ชื่อยา
+            "dose_mg",    # ขนาดยา (mg)
+            "note",       # note ต่อยาตัวนั้น ๆ
+        ]
+        existing = [c for c in wanted_cols if c in df_display.columns]
+        df_display = df_display[existing]
+
+        # เปลี่ยนชื่อหัวคอลัมน์ให้เป็นภาษาไทย
+        rename_map = {
+            "cycle": "Cycle",
+            "d1_date": "วันที่ D1",
+            "regimen": "Regimen",
+            "day_label": "Day",
+            "drug": "Drug",
+            "dose_mg": "Dose (mg)",
+            "note": "Note",
+        }
+        df_display = df_display.rename(columns=rename_map)
+
+        st.dataframe(df_display, use_container_width=True)
+
+        # ปุ่มโหลด CSV เก็บ backup / ส่งออกภายนอก
+        csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "💾 ดาวน์โหลดประวัติยาเคมีบำบัด (CSV)",
+            data=csv_bytes,
+            file_name=f"chemo_history_{pid}.csv",
+        )
+    # -----------------------------------------------------------------
+
+    # -------------------------------
+    # เพิ่ม cycle ใหม่ (บันทึกยา chemo)
+    # -------------------------------
+    st.markdown("### เพิ่ม cycle ใหม่ (บันทึกยาเคมีบำบัด)")
+
+    # หาว่าเคยให้ถึง cycle ไหนแล้ว และดึงชื่อ regimen ล่าสุดมาเป็นค่าเริ่มต้น
     if not chemo_df.empty:
         max_cycle = int(chemo_df["cycle"].max())
+        if chemo_df["regimen"].notna().any():
+            last_regimen = str(chemo_df["regimen"].dropna().iloc[-1])
+        else:
+            last_regimen = ""
     else:
         max_cycle = 0
+        last_regimen = ""
+
     next_cycle = max_cycle + 1
-    colc1, colc2, colc3 = st.columns(3)
-    with colc1:
-        cycle_no = st.number_input("Cycle no.", min_value=1, max_value=999, value=next_cycle, step=1)
-    with colc2:
-        given_date = st.date_input("วันที่ให้ยา", value=date.today(), key=f"given_date_{pid}")
-    with colc3:
-        reg_for_cycle = st.text_input("ชื่อ regimen สำหรับ cycle นี้", value=regimen_name or "", key=f"cycle_regimen_{pid}")
 
-    st.markdown("#### เลือก template หรือสร้าง manual")
-    mode = st.radio("โหมด", ["ใช้ template", "คัดลอกจาก cycle ก่อนหน้า", "Manual ไม่มี template"], horizontal=True)
-    default_rows: List[Dict[str, Any]] = []
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        cycle_no = st.number_input(
+            "Cycle no.",
+            min_value=1,
+            max_value=999,
+            value=next_cycle,
+            step=1,
+            key=f"cycle_no_{pid}",
+        )
+    with col2:
+        given_date = st.date_input(
+            "วันที่ให้ยา",
+            value=date.today(),
+            key=f"chemo_date_{pid}",
+        )
+    with col3:
+        regimen = st.text_input(
+            "ชื่อ regimen สำหรับ cycle นี้",
+            value=last_regimen,
+            key=f"chemo_regimen_{pid}",
+        )
 
-    if mode == "ใช้ template":
-        tmpl_key = regimen_sel if regimen_sel != "<พิมพ์ชื่อเอง>" else None
-        tmpl = CHEMO_TEMPLATES.get(tmpl_key or "", [])
-        for row in tmpl:
-            per_kg = row.get("per_kg")
-            per_m2 = row.get("per_m2")
-            if per_kg and weight:
-                dose = per_kg * weight
-            elif per_m2 and bsa:
-                dose = per_m2 * bsa
-            else:
-                dose = 0
-            default_rows.append(
-                {
-                    "Drug": row["drug"],
-                    "Dose_mg": round(dose, 1) if dose else 0,
-                    "Dose_factor": 1.0,
-                    "Notes": row.get("notes", ""),
-                }
-            )
-    elif mode == "คัดลอกจาก cycle ก่อนหน้า" and not chemo_df.empty:
-        prev = chemo_df[chemo_df["cycle"] == max_cycle]
-        for _, r in prev.iterrows():
-            default_rows.append(
-                {
-                    "Drug": r["drug"],
-                    "Dose_mg": r["dose_mg"],
-                    "Dose_factor": 1.0,
-                    "Notes": r.get("notes", ""),
-                }
-            )
-    else:
-        default_rows.append({"Drug": "", "Dose_mg": 0.0, "Dose_factor": 1.0, "Notes": ""})
+    st.caption("ใส่ขนาดยาเป็น mg เอง แล้วถ้าต้องการลด/เพิ่ม % ให้กรอกที่คอลัมน์ Dose_% (เช่น 80 = 80%)")
+
+    # ตารางให้หมอกรอกยาเอง (ต่อ 1 cycle)
+    default_rows = [
+        {"Drug": "", "Dose_mg": 0.0, "Dose_%": 100.0, "Notes": ""},
+    ]
 
     manual_df = pd.DataFrame(default_rows)
-    manual_df = st.data_editor(manual_df, num_rows="dynamic", key=f"editor_cycle_{pid}", use_container_width=True)
+
+    manual_df = st.data_editor(
+        manual_df,
+        num_rows="dynamic",
+        key=f"editor_cycle_{pid}",
+        use_container_width=True,
+        column_config={
+            "Drug": st.column_config.TextColumn("Drug"),
+            "Dose_mg": st.column_config.NumberColumn(
+                "Base dose (mg)",
+                min_value=0.0,
+                step=10.0,
+            ),
+            "Dose_%": st.column_config.NumberColumn(
+                "Dose_% (เช่น 80 = 80%)",
+                min_value=0.0,
+                max_value=200.0,
+                step=5.0,
+            ),
+            "Notes": st.column_config.TextColumn("Notes"),
+        },
+    )
+
+    # คำนวน dose หลังปรับ % เพื่อให้หมอดู
+    calc_df = manual_df.copy()
+    # แปลง Dose_% เป็นตัวเลข ถ้าว่างให้ถือเป็น 100%
+    calc_df["Dose_%"] = pd.to_numeric(calc_df["Dose_%"], errors="coerce").fillna(100.0)
+    calc_df["Final_dose_mg"] = calc_df["Dose_mg"] * (calc_df["Dose_%"] / 100.0)
+
+    st.markdown("#### Preview ขนาดยาหลังปรับ %")
+    st.dataframe(calc_df, use_container_width=True)
 
     if st.button("บันทึก chemo cycle นี้", key=f"btn_save_cycle_{pid}"):
-        if manual_df["Drug"].astype(str).str.strip().eq("").all():
-            st.error("กรุณากรอกอย่างน้อย 1 drug")
+        # ต้องมีชื่อยาอย่างน้อย 1 ตัว
+        if calc_df["Drug"].astype(str).str.strip().eq("").all():
+            st.error("กรุณากรอกชื่อยาอย่างน้อย 1 drug")
         else:
-            add_chemo_from_df(pid, manual_df, int(cycle_no), given_date, reg_for_cycle or regimen_name or "")
-            st.success("บันทึก chemo cycle นี้เรียบร้อย (dose แต่ละตัวจะใช้เป็นฐานสำหรับ cycle ถัดไป)")
+            conn = get_conn()
+            c = conn.cursor()
+            for _, row in calc_df.iterrows():
+                drug_name = str(row["Drug"]).strip()
+                if not drug_name:
+                    continue  # ข้ามแถวที่ไม่กรอกชื่อยา
+
+                dose_percent = float(row["Dose_%"]) if pd.notnull(row["Dose_%"]) else 100.0
+                final_dose_mg = float(row["Final_dose_mg"]) if pd.notnull(row["Final_dose_mg"]) else None
+                note_text = str(row["Notes"]).strip() if isinstance(row["Notes"], str) else None
+
+                # แปลง % เป็น factor (เช่น 80% -> 0.8) เพื่อเก็บลง dose_factor
+                dose_factor = dose_percent / 100.0
+
+                c.execute(
+                    """
+                    INSERT INTO chemo_courses
+                        (patient_id, cycle, date, regimen, drug, dose_mg, dose_factor, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        pid,
+                        int(cycle_no),
+                        given_date.isoformat(),
+                        regimen or None,
+                        drug_name,
+                        final_dose_mg,
+                        dose_factor,
+                        note_text,
+                    ),
+                )
+            conn.commit()
+            conn.close()
+            st.success("บันทึก chemo cycle นี้เรียบร้อยแล้ว")
             st.rerun()
 
+    # -----------------------------------------------------------------
 
 def show_dc_tab(pid: int, data: dict):
     st.subheader("แผนจัดการผู้ป่วย (D/C และรอบถัดไป)")
