@@ -705,26 +705,20 @@ def show_chemo_tab(pid: int, data: dict):
     }
     df_display = df_display.rename(columns=rename_map)
 
+
     # ---- จากตรงนี้ลงไปค่อยทำ timeline / accordion ----
 
     # ทำ timeline แบบ Accordion: 1 accordion ต่อ 1 cycle
-        max_cycle = int(chemo_df["cycle"].max())
+    max_cycle = int(chemo_df["cycle"].max())
 
-        for (cycle, d1, reg), group in chemo_df.groupby(["cycle", "d1_date", "regimen"]):
-            header = f"Cycle {int(cycle)} — D1: {d1 or '-'} — Regimen: {reg or '-'}"
+    for (cycle, d1, reg), group in chemo_df.groupby(["cycle", "d1_date", "regimen"]):
+        header = f"Cycle {int(cycle)} – D1: {d1 or '-'} – Regimen: {reg or '-'}"
 
-            # ให้ cycle ล่าสุดขยายอยู่แล้ว ที่เหลือพับ
-            expanded = (int(cycle) == max_cycle)
+        # ให้ cycle ล่าสุดขยายอยู่แล้ว ที่เหลือพับ
+        expanded = (int(cycle) == max_cycle)
 
-            with st.expander(header, expanded=expanded):
-                show = group[["day_label", "drug", "dose_mg", "note"]].copy()
-                show = show.rename(columns={
-                    "day_label": "Day",
-                    "drug": "Drug",
-                    "dose_mg": "Dose (mg)",
-                    "note": "Notes",
-                })
-                st.dataframe(show, use_container_width=True)
+        with st.expander(header, expanded=expanded):
+        st.dataframe(group[["day_label","drug","dose_mg","note"]])
 
         # ถ้าอยากมีตารางรวมแบบ timeline แบน ๆ ด้านล่างด้วยก็ได้ (option)
         with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
