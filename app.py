@@ -223,17 +223,28 @@ def get_patient(pid: int) -> dict:
 
 
 def get_chemo_courses(pid: int) -> pd.DataFrame:
-    # รายชื่อคอลัมน์ที่ระบบต้องการใช้
-    required_cols = [
-        "cycle",
-        "d1_date",
-        "regimen",
-        "day_label",
-        "drug",
-        "dose_mg",
-        "note",
-    ]
-
+    """
+    ดึงประวัติให้เคมีบำบัดของผู้ป่วยรายนี้
+    โดย join chemo_courses + chemo_drugs
+    ให้ได้คอลัมน์มาตรฐานที่ใช้โชว์ timeline
+    """
+    sql = """
+        SELECT
+            c.cycle                      AS cycle,
+            c.date                       AS d1_date,      -- วัน D1 ของ cycle
+            c.regimen                    AS regimen,      -- ชื่อ regimen
+            COALESCE(d.regimen_day,'D1') AS day_label,    -- D1 / D8 / Day 15 ฯลฯ
+            d.drug_name                  AS drug,         -- ชื่อยา
+            d.dose_mg                    AS dose_mg,      -- ขนาดยา (mg)
+            d.notes                      AS note          -- note ต่อแต่ละตัว
+        FROM chemo_courses c
+        LEFT JOIN chemo_drugs d
+               ON d.course_id = c.id
+        WHERE c.patient_id = ?
+        ORDER BY c.cycle, c.date, d.regimen_day, d.id
+    """
+    return fetch_df(sql, (pid,))
+    
     # ตรวจว่าตาราง chemo_cycles มีคอลัมน์อะไรบ้าง
     table_info = fetch_df("PRAGMA table_info(chemo_cycles)")
     existing_cols = set(table_info["name"].tolist())
@@ -647,22 +658,44 @@ def show_chemo_tab(pid: int, data: dict):
     if chemo_df.empty:
         st.info("ยังไม่มีประวัติการให้เคมีบำบัด")
     else:
-        # ทำสำเนาไว้แต่งหน้าตา
-        df_display = chemo_df.copy()
+    # เรียงลำดับให้อ่านง่าย
+    chemo_df = chemo_df.sort_values(
+        ["cycle", "d1_date", "day_label", "drug"],
+        kind="stable"
+    )
 
-        # เลือกเฉพาะคอลัมน์ที่มีอยู่จริงและเรียงลำดับให้อ่านง่าย
-        wanted_cols = [
-            "cycle",      # ลำดับ cycle
-            "d1_date",    # วันที่เริ่ม D1 ของ cycle นั้น
-            "regimen",    # ชื่อสูตรยา
-            "day_label",  # D1 / D8 / Day 15 ฯลฯ
-            "drug",       # ชื่อยา
-            "dose_mg",    # ขนาดยา (mg)
-            "note",       # note ต่อยาตัวนั้น ๆ
-        ]
-        existing = [c for c in wanted_cols if c in df_display.columns]
-        df_display = df_display[existing]
+    # ทำ timeline แบบ Accordion: 1 accordion ต่อ 1 cycle
+    max_cycle = int(chemo_df["cycle"].max())
 
+    for (cycle, d1, reg), group in chemo_df.groupby(["cycle", "d1_date", "regimen"]):
+        header = f"Cycle {int(cycle)} — D1: {d1 or '-'} — Regimen: {reg or '-'}"
+
+        # ให้ cycle ล่าสุดขยายอยู่แล้ว ที่เหลือพับ
+        expanded = (int(cycle) == max_cycle)
+
+        with st.expander(header, expanded=expanded):
+            show = group[["day_label", "drug", "dose_mg", "note"]].copy()
+            show = show.rename(columns={
+                "day_label": "Day",
+                "drug": "Drug",
+                "dose_mg": "Dose (mg)",
+                "note": "Notes",
+            })
+            st.dataframe(show, use_container_width=True)
+
+    # ถ้าอยากมีตารางรวมแบบ timeline แบน ๆ ด้านล่างด้วยก็ได้ (option)
+    with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
+        timeline = chemo_df[["cycle", "d1_date", "day_label", "drug", "dose_mg", "note"]].copy()
+        timeline = timeline.rename(columns={
+            "cycle": "Cycle",
+            "d1_date": "D1 date",
+            "day_label": "Day",
+            "drug": "Drug",
+            "dose_mg": "Dose (mg)",
+            "note": "Notes",
+        })
+        st.dataframe(timeline, use_container_width=True)
+    
         # เปลี่ยนชื่อหัวคอลัมน์ให้เป็นภาษาไทย
         rename_map = {
             "cycle": "Cycle",
