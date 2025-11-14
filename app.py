@@ -666,94 +666,94 @@ def show_chemo_tab(pid: int, data: dict):
 
 
     # ------------------ ประวัติการให้ยาเคมีบำบัด ------------------
-st.markdown("### ยาเคมีบำบัด (ประวัติการให้)")
+    st.markdown("### ยาเคมีบำบัด (ประวัติการให้)")
 
-chemo_df = get_chemo_courses(pid)
+    chemo_df = get_chemo_courses(pid)
 
-if chemo_df.empty:
-    st.info("ยังไม่มีประวัติการให้เคมีบำบัด")
-else:
-    # เรียงลำดับให้อ่านง่าย
-    chemo_df = chemo_df.sort_values(
-        ["cycle", "d1_date", "day_label", "drug"],
-        kind="stable",
-    )
+    if chemo_df.empty:
+        st.info("ยังไม่มีประวัติการให้เคมีบำบัด")
+    else:
+        # เรียงลำดับให้อ่านง่าย
+        chemo_df = chemo_df.sort_values(
+            ["cycle", "d1_date", "day_label", "drug"],
+            kind="stable",
+        )
 
-    # ทำตารางหลักสำหรับแสดง + ดาวน์โหลด (ใช้ชื่อคอลัมน์ภาษาอังกฤษไว้ก่อน)
-    df_display = chemo_df.copy()
+        # ทำตารางหลักสำหรับแสดง + ดาวน์โหลด (ใช้ชื่อคอลัมน์ภาษาอังกฤษไว้ก่อน)
+        df_display = chemo_df.copy()
 
-    wanted_cols = [
-        "cycle",
-        "d1_date",
-        "regimen",
-        "day_label",
-        "drug",
-        "dose_mg",
-        "note",
-    ]
-    existing = [c for c in wanted_cols if c in df_display.columns]
-    df_display = df_display[existing]
+        wanted_cols = [
+            "cycle",
+            "d1_date",
+            "regimen",
+            "day_label",
+            "drug",
+            "dose_mg",
+            "note",
+        ]
+        existing = [c for c in wanted_cols if c in df_display.columns]
+        df_display = df_display[existing]
 
-    # เปลี่ยนชื่อ column ให้สวย (เวอร์ชันภาษาอังกฤษ)
-    rename_map = {
-        "cycle": "Cycle",
-        "d1_date": "D1 date",
-        "regimen": "Regimen",
-        "day_label": "Day",
-        "drug": "Drug",
-        "dose_mg": "Dose (mg)",
-        "note": "Notes",
-    }
-    df_display = df_display.rename(columns=rename_map)
-
-    # -------- timeline แบบ Accordion: 1 accordion ต่อ 1 cycle --------
-    max_cycle = int(chemo_df["cycle"].max())
-
-    for (cycle, d1, reg), group in chemo_df.groupby(["cycle", "d1_date", "regimen"]):
-        header = f"Cycle {int(cycle)} – D1: {d1 or '-'} – Regimen: {reg or '-'}"
-
-        # ให้ cycle ล่าสุดขยายอยู่แล้ว ที่เหลือพับ
-        expanded = (int(cycle) == max_cycle)
-
-        with st.expander(header, expanded=expanded):
-            st.dataframe(group[["day_label", "drug", "dose_mg", "note"]])
-
-    # timeline รวมทุก cycle (option)
-    with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
-        timeline = chemo_df[["cycle", "d1_date", "day_label", "drug", "dose_mg", "note"]].copy()
-        timeline = timeline.rename(columns={
+        # เปลี่ยนชื่อ column ให้สวย (เวอร์ชันภาษาอังกฤษ)
+        rename_map = {
             "cycle": "Cycle",
             "d1_date": "D1 date",
+            "regimen": "Regimen",
             "day_label": "Day",
             "drug": "Drug",
             "dose_mg": "Dose (mg)",
             "note": "Notes",
-        })
-        st.dataframe(timeline, use_container_width=True)
+        }
+        df_display = df_display.rename(columns=rename_map)
 
-    # เปลี่ยนชื่อหัวตารางเวอร์ชันภาษาไทยสำหรับตารางดาวน์โหลด
-    rename_map = {
-        "Cycle": "Cycle",
-        "D1 date": "วันที่ D1",
-        "Regimen": "Regimen",
-        "Day": "Day",
-        "Drug": "Drug",
-        "Dose (mg)": "Dose (mg)",
-        "Notes": "Note",
-    }
-    df_display = df_display.rename(columns=rename_map)
+        # -------- timeline แบบ Accordion: 1 accordion ต่อ 1 cycle --------
+        max_cycle = int(chemo_df["cycle"].max())
 
-    st.dataframe(df_display, use_container_width=True)
+        for (cycle, d1, reg), group in chemo_df.groupby(["cycle", "d1_date", "regimen"]):
+            header = f"Cycle {int(cycle)} – D1: {d1 or '-'} – Regimen: {reg or '-'}"
 
-    # ปุ่มโหลด CSV เก็บ backup / ส่งออกภายนอก
-    csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        "📥 ดาวน์โหลดประวัติเคมีบำบัด (CSV)",
-        data=csv_bytes,
-        file_name=f"chemo_history_{pid}.csv",
-    )
+            # ให้ cycle ล่าสุดขยายอยู่แล้ว ที่เหลือพับ
+            expanded = (int(cycle) == max_cycle)
 
-# -----------------------------------------------------------------
+            with st.expander(header, expanded=expanded):
+                st.dataframe(group[["day_label", "drug", "dose_mg", "note"]])
+
+        # timeline รวมทุก cycle (option)
+        with st.expander("ดูแบบ Timeline รวมทุก cycle", expanded=False):
+            timeline = chemo_df[["cycle", "d1_date", "day_label", "drug", "dose_mg", "note"]].copy()
+            timeline = timeline.rename(columns={
+                "cycle": "Cycle",
+                "d1_date": "D1 date",
+                "day_label": "Day",
+                "drug": "Drug",
+                "dose_mg": "Dose (mg)",
+                "note": "Notes",
+            })
+            st.dataframe(timeline, use_container_width=True)
+
+        # เปลี่ยนชื่อหัวตารางเวอร์ชันภาษาไทยสำหรับตารางดาวน์โหลด
+        rename_map = {
+            "Cycle": "Cycle",
+            "D1 date": "วันที่ D1",
+            "Regimen": "Regimen",
+            "Day": "Day",
+            "Drug": "Drug",
+            "Dose (mg)": "Dose (mg)",
+            "Notes": "Note",
+        }
+        df_display = df_display.rename(columns=rename_map)
+
+        st.dataframe(df_display, use_container_width=True)
+
+        # ปุ่มโหลด CSV เก็บ backup / ส่งออกภายนอก
+        csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "📥 ดาวน์โหลดประวัติเคมีบำบัด (CSV)",
+            data=csv_bytes,
+            file_name=f"chemo_history_{pid}.csv",
+        )
+
+    # -----------------------------------------------------------------
     # -------------------------------
     # เพิ่ม cycle ใหม่ (บันทึกยา chemo)
     # -------------------------------
