@@ -156,6 +156,21 @@ def init_db():
     )
     """
     )
+
+    c.execute(
+    """
+    CREATE TABLE IF NOT EXISTS chemo_drugs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id INTEGER NOT NULL,
+        regimen_day TEXT NOT NULL,
+        drug_name TEXT NOT NULL,
+        dose_mg REAL,
+        dose_factor REAL DEFAULT 1.0,
+        notes TEXT,
+        FOREIGN KEY(course_id) REFERENCES chemo_courses(id)
+    )
+    """
+    )
     c.execute(
         """
     CREATE TABLE IF NOT EXISTS chemo_assessments(
