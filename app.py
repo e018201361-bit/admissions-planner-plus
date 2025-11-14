@@ -1129,27 +1129,31 @@ def page_export_history():
     # แปลง dict ของ patient ให้เป็น DataFrame 1 แถว
     patient_df = pd.DataFrame([data])
 
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        # Sheet 1: ข้อมูลคนไข้
-        patient_df.to_excel(writer, sheet_name="Patient", index=False)
+    # ----- รวมข้อมูลทุกส่วนเป็นตารางเดียว เพื่อ export เป็น CSV -----
+    export_parts = []
 
-        # Sheet 2: ประวัติ Chemo (ถ้ามี)
-        if not chemo_df.empty:
-            chemo_df.to_excel(writer, sheet_name="Chemo", index=False)
+    if not patient_df.empty:
+        info = patient_df.copy()
+        info.insert(0, "section", "patient_info")
+        export_parts.append(info)
 
-    buffer.seek(0)
+    if not chemo_df.empty:
+        df = chemo_df.copy()
+        df.insert(0, "section", "chemo")
+        export_parts.append(df)
 
-    # 6) ปุ่มดาวน์โหลด
-    st.download_button(
-        "⬇️ ดาวน์โหลดไฟล์ประวัติการรักษา (Excel)",
-        data=buffer,
-        file_name=f"treatment_history_{data['patient_name']}.xlsx",
-        mime=(
-            "application/vnd.openxmlformats-officedocument."
-            "spreadsheetml.sheet"
-        ),
-    )
+    if export_parts:
+        export_df = pd.concat(export_parts, ignore_index=True)
+        csv_bytes = export_df.to_csv(index=False).encode("utf-8-sig")
+
+        st.download_button(
+            "⬇️ ดาวน์โหลดแฟ้มประวัติการรักษา (CSV)",
+            data=csv_bytes,
+            file_name=f"history_{data['patient_name']}.csv",
+            mime="text/csv",
+        )
+    else:
+        st.info("ยังไม่พบข้อมูลสำหรับ export ของผู้ป่วยรายนี้")
 
 def page_settings():
     st.header("Settings / Reminders")
