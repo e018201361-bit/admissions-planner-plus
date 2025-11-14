@@ -670,14 +670,42 @@ def show_chemo_tab(pid: int, data: dict):
 
     chemo_df = get_chemo_courses(pid)
 
+    # ถ้าไม่มีข้อมูล ให้แสดงข้อความแล้วจบการทำงานเลย
     if chemo_df.empty:
         st.info("ยังไม่มีประวัติการให้เคมีบำบัด")
-    else:
-        # เรียงลำดับให้อ่านง่าย
-        chemo_df = chemo_df.sort_values(
-            ["cycle", "d1_date", "day_label", "drug"],
-            kind="stable"
-        )
+        return   # <--- สำคัญ: ไม่ให้โค้ดส่วนล่างทำงานต่อ
+
+    # ----- มีข้อมูลแล้ว เริ่มสร้างตารางสำหรับ timeline -----
+
+    df_display = chemo_df.copy()
+
+    # เรียงลำดับ
+    df_display = df_display.sort_values(
+        ["cycle", "d1_date", "day_label", "drug"],
+        kind="stable"
+    )
+
+    # เลือกเฉพาะคอลัมน์ที่ต้องใช้
+    wanted_cols = [
+        "cycle", "d1_date", "regimen",
+        "day_label", "drug", "dose_mg", "note"
+    ]
+    existing = [c for c in wanted_cols if c in df_display.columns]
+    df_display = df_display[existing]
+
+    # เปลี่ยนชื่อ column ให้สวย
+    rename_map = {
+        "cycle": "Cycle No",
+        "d1_date": "D1",
+        "regimen": "Regimen",
+        "day_label": "Day",
+        "drug": "Drug",
+        "dose_mg": "Dose (mg)",
+        "note": "Notes",
+    }
+    df_display = df_display.rename(columns=rename_map)
+
+    # ---- จากตรงนี้ลงไปค่อยทำ timeline / accordion ----
 
         # ทำ timeline แบบ Accordion: 1 accordion ต่อ 1 cycle
         max_cycle = int(chemo_df["cycle"].max())
