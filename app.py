@@ -707,7 +707,7 @@ def show_chemo_tab(pid: int, data: dict):
 
     # ---- จากตรงนี้ลงไปค่อยทำ timeline / accordion ----
 
-        # ทำ timeline แบบ Accordion: 1 accordion ต่อ 1 cycle
+    # ทำ timeline แบบ Accordion: 1 accordion ต่อ 1 cycle
         max_cycle = int(chemo_df["cycle"].max())
 
         for (cycle, d1, reg), group in chemo_df.groupby(["cycle", "d1_date", "regimen"]):
