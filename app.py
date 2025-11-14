@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Dict, Any
 
 import pandas as pd
+import io
 import streamlit as st
 
 DB_PATH = "admissions_planner_plus_v2.db"
@@ -597,6 +598,43 @@ def patient_selector() -> int:
     label = st.selectbox("เลือกผู้ป่วย", list(options.keys()))
     return options[label]
 
+def export_patient_selector() -> int:
+    """
+    ใช้สำหรับหน้า Export – เลือกผู้ป่วยได้ทั้ง Admitted / Discharged
+    """
+    df = fetch_df(
+        """
+        SELECT p.id,
+               p.patient_name,
+               p.mrn,
+               p.status,
+               h.name AS hospital,
+               w.name AS ward
+        FROM patients p
+        LEFT JOIN hospitals h ON p.hospital_id = h.id
+        LEFT JOIN wards w ON p.ward_id = w.id
+        WHERE p.status IN ('Admitted', 'Discharged')
+        ORDER BY p.patient_name
+        """
+    )
+
+    if df.empty:
+        st.info("ยังไม่มีผู้ป่วยในระบบ")
+        return 0
+
+    options: dict[str, int] = {}
+    for _, row in df.iterrows():
+        label = (
+            f"{row['patient_name']} | "
+            f"{row['mrn'] or '-'} | "
+            f"{row['hospital'] or ''} {row['ward'] or ''} | "
+            f"{row['status']}"
+        )
+        options[label] = int(row["id"])
+
+    label = st.selectbox("เลือกผู้ป่วย (ทุกสถานะ)", list(options.keys()))
+    return options[label]
+
 # ------------------------ helper: convert hospital/ward id to names ------------------------
 def get_hosp_ward_names(hospital_id: int | None, ward_id: int | None) -> tuple[str, str]:
     hosp_name = "-"
@@ -1056,6 +1094,62 @@ def show_dc_tab(pid: int, data: dict):
                 st.success("บันทึก D/C และสร้างรายการ Planned admit รอบถัดไปแล้ว")
                 st.rerun()
 
+def page_export_history():
+    """หน้า Export ประวัติการรักษา (เน้น Chemo + ข้อมูลคนไข้)"""
+    st.header("Export ประวัติการรักษา")
+
+    # 1) เลือกผู้ป่วย (ใช้ selector ที่ดึงทั้ง Admitted + Discharged)
+    pid = export_patient_selector()
+    if not pid:
+        return
+
+    # 2) ดึงข้อมูลคนไข้
+    data = get_patient(pid)
+    if not data:
+        st.error("ไม่พบข้อมูลผู้ป่วย")
+        return
+
+    # 3) แสดงข้อมูลสรุปคนไข้ด้านบน
+    st.markdown(
+        f"**ชื่อ:** {data['patient_name']}  "
+        f"| **HN:** {data.get('mrn') or '-'}  "
+        f"| **สถานะ:** {data.get('status') or '-'}"
+    )
+
+    # 4) ดึงประวัติ chemo ทั้งหมด
+    chemo_df = get_chemo_courses(pid)
+
+    if chemo_df.empty:
+        st.info("ยังไม่มีประวัติให้เคมีบำบัด")
+    else:
+        st.subheader("ตัวอย่างประวัติการให้เคมีบำบัด")
+        st.dataframe(chemo_df, use_container_width=True)
+
+    # 5) เตรียมข้อมูลสำหรับ export เป็น Excel
+    # แปลง dict ของ patient ให้เป็น DataFrame 1 แถว
+    patient_df = pd.DataFrame([data])
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        # Sheet 1: ข้อมูลคนไข้
+        patient_df.to_excel(writer, sheet_name="Patient", index=False)
+
+        # Sheet 2: ประวัติ Chemo (ถ้ามี)
+        if not chemo_df.empty:
+            chemo_df.to_excel(writer, sheet_name="Chemo", index=False)
+
+    buffer.seek(0)
+
+    # 6) ปุ่มดาวน์โหลด
+    st.download_button(
+        "⬇️ ดาวน์โหลดไฟล์ประวัติการรักษา (Excel)",
+        data=buffer,
+        file_name=f"treatment_history_{data['patient_name']}.xlsx",
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+    )
 
 def page_settings():
     st.header("Settings / Reminders")
@@ -1110,6 +1204,7 @@ def main():
             "แผน Admit",
             "Dashboard",
             "รายละเอียดผู้ป่วย / Rounds / Chemo / D/C",
+            "Export ประวัติการรักษา",
             "Settings / Reminders",
         ],
     )
@@ -1122,6 +1217,8 @@ def main():
         page_dashboard()
     elif page == "รายละเอียดผู้ป่วย / Rounds / Chemo / D/C":
         page_patient_detail()
+    elif page == "Export ประวัติการรักษา":
+        page_export_history()
     elif page == "Settings / Reminders":
         page_settings()
 
