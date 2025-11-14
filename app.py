@@ -246,7 +246,7 @@ def get_chemo_courses(pid: int) -> pd.DataFrame:
     sql = """
         SELECT
             c.cycle                     AS cycle,
-            c.d1_date                   AS d1_date,   -- วัน D1 ของ cycle
+            c.date                      AS d1_date,   -- ใช้คอลัมน์เดิม 'date' แล้วตั้งชื่อว่า d1_date
             c.regimen                   AS regimen,   -- ชื่อ regimen
             COALESCE(d.regimen_day,'D1') AS day_label, -- D1 / D8 / Day 15 ฯลฯ
             d.drug_name                 AS drug,      -- ชื่อยา
@@ -258,7 +258,7 @@ def get_chemo_courses(pid: int) -> pd.DataFrame:
         WHERE c.patient_id = ?
         ORDER BY
             c.cycle,
-            c.d1_date,
+            c.date,
             d.regimen_day,
             d.id
     """
