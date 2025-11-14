@@ -772,41 +772,60 @@ def show_chemo_tab(pid: int, data: dict):
         if calc_df["Drug"].astype(str).str.strip().eq("").all():
             st.error("กรุณากรอกชื่อยาอย่างน้อย 1 drug")
         else:
+            import sqlite3  # ถ้ายังไม่ได้ import ด้านบนไฟล์
+
             conn = get_conn()
             c = conn.cursor()
-            for _, row in calc_df.iterrows():
-                drug_name = str(row["Drug"]).strip()
-                if not drug_name:
-                    continue  # ข้ามแถวที่ไม่กรอกชื่อยา
+            try:
+                for _, row in calc_df.iterrows():
+                    drug_name = str(row["Drug"]).strip()
+                    if not drug_name:
+                        continue  # ข้ามแถวที่ไม่กรอกชื่อยา
 
-                dose_percent = float(row["Dose_%"]) if pd.notnull(row["Dose_%"]) else 100.0
-                final_dose_mg = float(row["Final_dose_mg"]) if pd.notnull(row["Final_dose_mg"]) else None
-                note_text = str(row["Notes"]).strip() if isinstance(row["Notes"], str) else None
+                    dose_percent = float(row["Dose_%"]) if pd.notnull(row["Dose_%"]) else 100.0
+                    final_dose_mg = (
+                        float(row["Final_dose_mg"])
+                        if pd.notnull(row["Final_dose_mg"])
+                        else 0.0          # กันไม่ให้เป็น None เผื่อ dose_mg NOT NULL
+                    )
+                    note_text = (
+                        str(row["Notes"]).strip()
+                        if isinstance(row["Notes"], str) and row["Notes"]
+                        else None
+                    )
 
-                # แปลง % เป็น factor (เช่น 80% -> 0.8) เพื่อเก็บลง dose_factor
-                dose_factor = dose_percent / 100.0
+                    # แปลง % เป็น factor (เช่น 80% -> 0.8) เพื่อเก็บลง dose_factor
+                    dose_factor = dose_percent / 100.0
 
-                c.execute(
-                    """
-                    INSERT INTO chemo_courses
-                        (patient_id, cycle, date, regimen, drug, dose_mg, dose_factor, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        pid,
-                        int(cycle_no),
-                        given_date.isoformat(),
-                        regimen or None,
-                        drug_name,
-                        final_dose_mg,
-                        dose_factor,
-                        note_text,
-                    ),
-                )
-            conn.commit()
-            conn.close()
-            st.success("บันทึก chemo cycle นี้เรียบร้อยแล้ว")
-            st.rerun()
+                    c.execute(
+                        """
+                        INSERT INTO chemo_courses
+                            (patient_id, cycle, date, regimen, drug, dose_mg, dose_factor, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            int(pid),
+                            int(cycle_no),
+                            given_date.isoformat(),   # ไม่ควรเป็น None
+                            regimen or None,
+                            drug_name,
+                            final_dose_mg,
+                            float(dose_factor),
+                            note_text,
+                        ),
+                    )
+
+                conn.commit()
+                st.success("บันทึก chemo cycle นี้เรียบร้อยแล้ว")
+                st.rerun()
+
+            except sqlite3.IntegrityError as e:
+                conn.rollback()
+                # ตรงนี้จะเห็นข้อความจริงของ error แล้ว
+                st.error(f"บันทึก chemo ไม่สำเร็จ (IntegrityError): {e}")
+
+            finally:
+                conn.close()
 
     # -----------------------------------------------------------------
 
