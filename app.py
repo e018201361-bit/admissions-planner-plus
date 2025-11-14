@@ -291,65 +291,67 @@ def add_chemo_from_df(
     given_date: date,
     regimen_name: str,
 ) -> None:
-    """บันทึก chemo 1 cycle
-    - สร้าง 1 แถวใน chemo_courses (ข้อมูลระดับ cycle)
-    - สร้างหลายแถวใน chemo_drugs (รายละเอียดยาแต่ละตัว)
+    """
+    บันทึกยาเคมีบำบัด 1 cycle
+    - 1 แถวใน chemo_courses = 1 drug
+    - คำนวณ dose จาก mg + เปอร์เซ็นต์ แล้วเก็บทั้ง dose_mg (จริง) และ dose_factor
     """
     conn = get_conn()
     c = conn.cursor()
 
-    # ---------- 1) สร้างแถวใน chemo_courses ----------
-    c.execute(
-        """
-        INSERT INTO chemo_courses(
-            patient_id,
-            cycle,
-            d1_date,
-            regimen_name
-        ) VALUES (?, ?, ?, ?)
-        """,
-        (
-            pid,
-            int(cycle_no),
-            given_date.isoformat(),
-            regimen_name or None,
-        ),
-    )
-    course_id = c.lastrowid  # ใช้เป็น FK ใน chemo_drugs
-
-    # ---------- 2) สร้างแถวใน chemo_drugs จาก df ----------
     for _, r in df.iterrows():
+        # ---- ชื่อยา ----
         drug = str(r.get("Drug") or "").strip()
         if not drug:
-            # ถ้าไม่ได้กรอกชื่อยา ข้ามแถวนี้เลย
+            # ถ้าไม่ได้กรอกชื่อยา ข้ามแถวนี้ไป
             continue
 
-        # ตอนนี้เรายังไม่มี column day ในตาราง editor เลย fix เป็น "D1" ไปก่อน
-        regimen_day = "D1"
-
-        dose_mg = r.get("Dose_mg")
+        # ---- ขนาดยา base เป็น mg ----
+        base_dose = r.get("Dose_mg")
         try:
-            dose_mg = float(dose_mg) if dose_mg not in (None, "") else None
+            base_dose = float(base_dose) if base_dose not in (None, "") else None
         except (TypeError, ValueError):
-            dose_mg = None
+            base_dose = None
 
+        # ---- เปอร์เซ็นต์ขนาดยา (เช่น 80 = 80%) ----
+        dose_pct = r.get("Dose_%")
+        try:
+            dose_pct = float(dose_pct) if dose_pct not in (None, "") else 100.0
+        except (TypeError, ValueError):
+            dose_pct = 100.0
+
+        # คำนวณ dose จริง และ factor
+        final_dose = None
+        dose_factor = None
+        if base_dose is not None:
+            dose_factor = dose_pct / 100.0
+            final_dose = base_dose * dose_factor
+
+        # ---- note ----
         notes = str(r.get("Notes") or "").strip()
 
+        # ---- บันทึกลง chemo_courses ----
         c.execute(
             """
-            INSERT INTO chemo_drugs(
-                course_id,
-                regimen_day,
-                drug_name,
-                dose_mg,
-                notes
-            ) VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                course_id,
-                regimen_day,
+            INSERT INTO chemo_courses(
+                patient_id,
+                cycle,
+                date,
+                regimen,
                 drug,
                 dose_mg,
+                dose_factor,
+                notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                pid,
+                int(cycle_no),
+                given_date.isoformat(),
+                regimen_name or "",
+                drug,
+                final_dose,
+                dose_factor,
                 notes or None,
             ),
         )
