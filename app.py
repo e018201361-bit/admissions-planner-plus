@@ -643,7 +643,7 @@ def sidebar_backup():
 
 
 def page_dashboard():
-    st.header("Dashboard")
+    st.header("รายชื่อผู้ป่วย")
 
     # ---------- ตารางบน: รายชื่อผู้ป่วยแบบละเอียด ----------
     df_detail = fetch_df("""
