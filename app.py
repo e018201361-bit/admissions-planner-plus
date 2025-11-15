@@ -1374,7 +1374,7 @@ def main():
         [
             "เพิ่มผู้ป่วย",
             "แผน Admit",
-            "Dashboard",
+            "รายชื่อผู้ป่วย",
             "รายละเอียดผู้ป่วย / Rounds / Chemo / D/C",
             "Export ประวัติการรักษา",
             "Settings / Reminders",
@@ -1385,7 +1385,7 @@ def main():
         page_add_patient()
     elif page == "แผน Admit":
         page_plan_admit()
-    elif page == "Dashboard":
+    elif page == "รายชื่อผู้ป่วย":
         page_dashboard()
     elif page == "รายละเอียดผู้ป่วย / Rounds / Chemo / D/C":
         page_patient_detail()
