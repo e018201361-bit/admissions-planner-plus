@@ -587,11 +587,11 @@ def page_plan_admit():
                 )
 
             # === ปุ่มบันทึก + Admit + ลบออกจากแผน ===
-            col_b1, col_b2, col_b3 = st.columns(3)
+            spacer_l, col_b1, col_b2, col_b3, spacer_r = st.columns([1, 2, 2, 2, 1])
 
             # ปุ่มบันทึกแผน (แก้ ward/วันเฉย ๆ)
             with col_b1:
-                if st.button("บันทึกแผน (ยังไม่ admit)", key=f"btn_update_plan_{row['id']}"):
+                if st.button("บันทึกแผน\n(ยังไม่ admit)", key=f"btn_update_plan_{row['id']}"):
                     execute(
                         "UPDATE patients SET ward_id=?, planned_admit_date=? WHERE id=?",
                         (new_ward_id, new_plan_date.isoformat(), int(row["id"])),
