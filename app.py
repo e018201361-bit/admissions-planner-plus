@@ -428,12 +428,12 @@ def page_add_patient():
                 index=0,
             )
 
-        # -------- ส่วนล่างของฟอร์ม (เต็มหน้าจอ) --------
+
+        # --------- ส่วนล่างของฟอร์ม (เต็มหน้าจอ) ---------
         bed = st.text_input("เตียง (ถ้ามี)")
 
-        # ใช้ admit_date (วันที่เริ่มนอน รพ.) แทน planned_admit_date บนฟอร์ม
         admit_date = st.date_input(
-            "Admit date (วันที่เริ่มนอน รพ.)",
+            "วันที่จะเริ่มนอน รพ. (ใช้เป็นวันวางแผน admit)",
             value=date.today(),
         )
 
@@ -441,43 +441,83 @@ def page_add_patient():
         responsible_md = st.text_input("Responsible MD")
         notes = st.text_area("Notes")
 
-        submitted = st.form_submit_button("บันทึก")
+        # ปุ่ม 2 อัน
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            submitted = st.form_submit_button("บันทึก (Admit เลย)")
+        with col_btn2:
+            plan_admit = st.form_submit_button("วางแผน Admit (ยังไม่ Admit)")
 
-    # -------- Logic ตอนกดบันทึก --------
-    if submitted:
-        if not name or not hospital_id:
-            st.error("กรุณากรอกชื่อผู้ป่วยและเลือกโรงพยาบาล")
-        else:
-            execute(
-                """
-                INSERT INTO patients(
-                    patient_name, mrn, age, sex,
-                    hospital_id, ward_id,
-                    status, planned_admit_date, admit_date, bed,
-                    diagnosis, responsible_md,
-                    priority, precautions, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    name,
-                    mrn or None,
-                    int(age) if age else None,
-                    sex or None,
-                    hospital_id,
-                    ward_id,
-                    "Admitted",              # สถานะเคสนี้คือ Admit แล้ว
-                    None,                    # planned_admit_date เว้นไว้ (ไม่ได้ใช้ในฟอร์มนี้)
-                    admit_date.isoformat(),  # วันที่นอนจริง
-                    bed or None,
-                    diagnosis or None,
-                    responsible_md or None,
-                    priority,
-                    precautions,
-                    notes or None,
-                ),
-            )
-            st.success("บันทึกผู้ป่วย (Admitted) เรียบร้อยแล้ว")
-            st.rerun()
+        # --------- Logic ตอนกดปุ่ม ---------
+        if submitted:
+            if not name or not hospital_id:
+                st.error("กรุณากรอกชื่อผู้ป่วยและเลือกโรงพยาบาล")
+            else:
+                execute(
+                    """
+                    INSERT INTO patients(
+                        patient_name, mrn, age, sex,
+                        hospital_id, ward_id,
+                        status, planned_admit_date, admit_date, bed,
+                        diagnosis, responsible_md,
+                        priority, precautions, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        name,
+                        mrn or None,
+                        int(age) if age else None,
+                        sex or None,
+                        hospital_id,
+                        ward_id,
+                        "Admitted",
+                        None,
+                        admit_date.isoformat(),
+                        bed or None,
+                        diagnosis or None,
+                        responsible_md or None,
+                        priority,
+                        precautions,
+                        notes or None,
+                    ),
+                )
+                st.success("บันทึกผู้ป่วย (Admitted) เรียบร้อยแล้ว")
+                st.rerun()
+
+elif plan_admit:
+    if not name or not hospital_id:
+        st.error("กรุณากรอกชื่อผู้ป่วยและเลือกโรงพยาบาล")
+    else:
+        execute(
+            """
+            INSERT INTO patients(
+                patient_name, mrn, age, sex,
+                hospital_id, ward_id,
+                status, planned_admit_date, admit_date, bed,
+                diagnosis, responsible_md,
+                priority, precautions, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                mrn or None,
+                int(age) if age else None,
+                sex or None,
+                hospital_id,
+                None,                           # ยังไม่ระบุ ward
+                "Planned",                      # << สำคัญ
+                admit_date.isoformat(),         # planned_admit_date
+                None,                           # ยังไม่ admit
+                None,
+                diagnosis or None,
+                responsible_md or None,
+                priority,
+                precautions,
+                notes or None,
+            ),
+        )
+        st.success("บันทึก 'แผน Admit' เรียบร้อยแล้ว")
+        st.rerun()
 
 
 def page_plan_admit():
