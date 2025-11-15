@@ -1308,6 +1308,58 @@ def page_settings():
                 (hospital_id,),
             )
             st.dataframe(ward_df, use_container_width=True)
+            # ---------- แก้ไขหรือลบวอร์ด ----------
+            if not ward_df.empty:
+                st.markdown("#### แก้ไข / ลบวอร์ด")
+
+                # เลือกวอร์ดก่อน
+                ward_name_list = ward_df["name"].tolist()
+                selected_ward_name = st.selectbox(
+                    "เลือกวอร์ดที่ต้องการแก้ไขหรือลบ",
+                    ward_name_list,
+                    key=f"edit_ward_select_{hospital_id}",
+                )
+
+                # หา ward_id ของวอร์ดที่เลือก
+                ward_row = ward_df[ward_df["name"] == selected_ward_name].iloc[0]
+                selected_ward_id = int(ward_row["id"])
+
+                # ช่องกรอกชื่อใหม่ (ค่าเริ่มต้นเป็นชื่อเดิม)
+                new_ward_name_edit = st.text_input(
+                    "ชื่อวอร์ดใหม่",
+                    value=selected_ward_name,
+                    key=f"edit_ward_name_{selected_ward_id}",
+                )
+
+                col_edit, col_del = st.columns(2)
+
+                # ปุ่มแก้ไขชื่อ
+                with col_edit:
+                    if st.button("บันทึกชื่อวอร์ดใหม่", key=f"btn_update_ward_{selected_ward_id}"):
+                        execute(
+                            "UPDATE wards SET name=? WHERE id=?",
+                            (new_ward_name_edit, selected_ward_id),
+                        )
+                        st.success("แก้ไขชื่อวอร์ดเรียบร้อยแล้ว")
+                        st.rerun()
+
+                # ปุ่มลบวอร์ด
+                with col_del:
+                    if st.button("ลบวอร์ดนี้", key=f"btn_delete_ward_{selected_ward_id}"):
+                        # เช็คก่อนว่ามีผู้ป่วยใช้วอร์ดนี้อยู่ไหม
+                        used_df = fetch_df(
+                            "SELECT COUNT(*) AS cnt FROM patients WHERE ward_id=?",
+                            (selected_ward_id,),
+                        )
+                        if used_df["cnt"].iloc[0] > 0:
+                            st.error("ไม่สามารถลบวอร์ดนี้ได้ เพราะมีผู้ป่วยที่ผูกกับวอร์ดนี้อยู่")
+                        else:
+                            execute(
+                                "DELETE FROM wards WHERE id=?",
+                                (selected_ward_id,),
+                            )
+                            st.success("ลบวอร์ดเรียบร้อยแล้ว")
+                            st.rerun()
 
 
 def main():
