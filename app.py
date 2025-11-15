@@ -367,7 +367,7 @@ def export_chemo_csv(pid: int, patient_name: str) -> bytes:
 
 
 def page_add_patient():
-    st.header("เพิ่มผู้ป่วย (เคสที่ admit อยู่แล้ว)")
+    st.header("เพิ่มผู้ป่วย")
 
     # -------- เลือกรพ.ก่อน (นอกฟอร์ม) --------
     hospitals = fetch_df("SELECT id, name FROM hospitals ORDER BY name")
