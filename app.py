@@ -532,20 +532,85 @@ def page_plan_admit():
         ORDER BY p.planned_admit_date, p.patient_name
         """
     )
+
     if df.empty:
         st.info("ยังไม่มีผู้ป่วยที่วางแผน admit")
         return
-    for _, row in df.iterrows():
-        with st.expander(f"{row['planned_admit_date']} — {row['patient_name']} ({row.get('hospital') or ''} {row.get('ward') or ''})"):
-            st.write(f"HN: {row['mrn'] or '-'}")
-            if st.button("Admit แล้ววันนี้", key=f"btn_admit_{row['id']}"):
-                execute(
-                    "UPDATE patients SET status='Admitted', admit_date=?, planned_admit_date=NULL WHERE id=?",
-                    (date.today().isoformat(), int(row["id"])),
-                )
-                st.success("อัปเดตเป็น Admitted แล้ว")
-                st.rerun()
 
+    for _, row in df.iterrows():
+
+        # แปลง planned_admit_date จาก string -> date ถ้ามี
+        try:
+            default_plan_date = (
+                datetime.fromisoformat(row["planned_admit_date"]).date()
+                if row["planned_admit_date"]
+                else date.today()
+            )
+        except Exception:
+            default_plan_date = date.today()
+
+        with st.expander(f"{row['planned_admit_date']} – {row['patient_name']} ({row.get('hospital') or '-'})"):
+            st.write(f"HN: {row['mrn'] or '-'}")
+
+            # === แก้ไข Ward ===
+            wards = fetch_df(
+                "SELECT id, name FROM wards WHERE hospital_id=? ORDER BY name",
+                (row["hospital_id"],),
+            ) if row["hospital_id"] else pd.DataFrame()
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if not wards.empty:
+                    ward_names = [""] + wards["name"].tolist()
+                    current_ward_name = row["ward"] if row["ward"] in ward_names else ""
+                    new_ward_name = st.selectbox(
+                        "วอร์ด (แก้ไขได้)",
+                        ward_names,
+                        index=ward_names.index(current_ward_name) if current_ward_name in ward_names else 0,
+                        key=f"ward_select_{row['id']}",
+                    )
+                    if new_ward_name:
+                        new_ward_id = int(wards.set_index("name").loc[new_ward_name, "id"])
+                    else:
+                        new_ward_id = None
+                else:
+                    st.write("ยังไม่มีวอร์ดของ รพ. นี้")
+                    new_ward_id = None
+
+            # === แก้ไขวัน plan ===
+            with col2:
+                new_plan_date = st.date_input(
+                    "วันที่วางแผน admit",
+                    value=default_plan_date,
+                    key=f"plan_date_{row['id']}",
+                )
+
+            # === ปุ่มบันทึก + Admit ===
+            col_b1, col_b2 = st.columns(2)
+
+            with col_b1:
+                if st.button("บันทึกแผน (ยังไม่ admit)", key=f"btn_update_plan_{row['id']}"):
+                    execute(
+                        "UPDATE patients SET ward_id=?, planned_admit_date=? WHERE id=?",
+                        (new_ward_id, new_plan_date.isoformat(), int(row["id"])),
+                    )
+                    st.success("อัปเดตแผน admit แล้ว")
+                    st.rerun()
+
+            with col_b2:
+                if st.button("Admit แล้ววันนี้", key=f"btn_admit_{row['id']}"):
+                    execute(
+                        "UPDATE patients SET status='Admitted', ward_id=?, admit_date=?, planned_admit_date=? WHERE id=?",
+                        (
+                            new_ward_id,
+                            date.today().isoformat(),
+                            new_plan_date.isoformat(),
+                            int(row["id"]),
+                        ),
+                    )
+                    st.success("อัปเดตเป็น Admitted แล้ว")
+                    st.rerun()
 
 def sidebar_backup():
     st.sidebar.markdown("### 💾 Backup/Restore")
