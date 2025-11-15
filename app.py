@@ -586,9 +586,10 @@ def page_plan_admit():
                     key=f"plan_date_{row['id']}",
                 )
 
-            # === ปุ่มบันทึก + Admit ===
-            col_b1, col_b2 = st.columns(2)
+            # === ปุ่มบันทึก + Admit + ลบออกจากแผน ===
+            col_b1, col_b2, col_b3 = st.columns(3)
 
+            # ปุ่มบันทึกแผน (แก้ ward/วันเฉย ๆ)
             with col_b1:
                 if st.button("บันทึกแผน (ยังไม่ admit)", key=f"btn_update_plan_{row['id']}"):
                     execute(
@@ -598,6 +599,7 @@ def page_plan_admit():
                     st.success("อัปเดตแผน admit แล้ว")
                     st.rerun()
 
+            # ปุ่ม Admit วันนี้
             with col_b2:
                 if st.button("Admit แล้ววันนี้", key=f"btn_admit_{row['id']}"):
                     execute(
@@ -612,6 +614,15 @@ def page_plan_admit():
                     st.success("อัปเดตเป็น Admitted แล้ว")
                     st.rerun()
 
+            # ปุ่มลบออกจากแผน (ลบ record นี้ทิ้งเลย)
+            with col_b3:
+                if st.button("ลบออกจากแผน", key=f"btn_delete_{row['id']}"):
+                    execute(
+                        "DELETE FROM patients WHERE id=?",
+                        (int(row["id"]),),
+                    )
+                    st.success("ลบผู้ป่วยออกจากแผน admit แล้ว")
+                    st.rerun()
 def sidebar_backup():
     st.sidebar.markdown("### 💾 Backup/Restore")
     import os
